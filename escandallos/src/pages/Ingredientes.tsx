@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ArrowRightLeft } from "lucide-react";
+import { ALERGENOS, parseAlergenos, serializeAlergenos, getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 
 const ingredienteSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
@@ -20,6 +21,8 @@ interface Ingrediente {
   unidad_base: string;
   categoria: string | null;
   alergenos: string | null;
+  precio: number | null;
+  proveedor_nombre: string | null;
 }
 
 const UNIDADES = ["kg", "g", "l", "ml", "ud"];
@@ -41,11 +44,13 @@ export default function Ingredientes() {
   const [convFrom, setConvFrom] = useState("kg");
   const [convTo, setConvTo] = useState("g");
   const [convResult, setConvResult] = useState<string | null>(null);
+  const [selectedAlergenos, setSelectedAlergenos] = useState<string[]>([]);
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<IngredienteFormData>({
     resolver: zodResolver(ingredienteSchema),
@@ -66,16 +71,29 @@ export default function Ingredientes() {
     loadIngredientes();
   }, []);
 
+  const toggleAlergeno = (id: string) => {
+    setSelectedAlergenos((prev) => {
+      const next = prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id];
+      setValue("alergenos", serializeAlergenos(next), { shouldValidate: true });
+      return next;
+    });
+  };
+
   const onSubmit = async (data: IngredienteFormData) => {
     try {
+      const input = {
+        ...data,
+        alergenos: serializeAlergenos(selectedAlergenos),
+      };
       if (editingId) {
-        await invoke("update_ingrediente", { id: editingId, input: data });
+        await invoke("update_ingrediente", { id: editingId, input });
       } else {
-        await invoke("create_ingrediente", { input: data });
+        await invoke("create_ingrediente", { input });
       }
       setShowForm(false);
       setEditingId(null);
       reset();
+      setSelectedAlergenos([]);
       loadIngredientes();
     } catch (e) {
       console.error("Error saving ingrediente:", e);
@@ -84,6 +102,8 @@ export default function Ingredientes() {
 
   const handleEdit = (ing: Ingrediente) => {
     setEditingId(ing.id);
+    const alergenos = parseAlergenos(ing.alergenos);
+    setSelectedAlergenos(alergenos);
     reset({
       nombre: ing.nombre,
       unidad_base: ing.unidad_base,
@@ -107,6 +127,7 @@ export default function Ingredientes() {
     setShowForm(false);
     setEditingId(null);
     reset();
+    setSelectedAlergenos([]);
   };
 
   const convert = () => {
@@ -144,6 +165,7 @@ export default function Ingredientes() {
               onClick={() => {
                 setEditingId(null);
                 reset();
+                setSelectedAlergenos([]);
                 setShowForm(true);
               }}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
@@ -223,44 +245,59 @@ export default function Ingredientes() {
               <X size={20} />
             </button>
           </div>
-          <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-              <input
-                {...register("nombre")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              {errors.nombre && <p className="text-red-500 text-sm mt-1">{errors.nombre.message}</p>}
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input
+                  {...register("nombre")}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                {errors.nombre && <p className="text-red-500 text-sm mt-1">{errors.nombre.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Unidad base *</label>
+                <select
+                  {...register("unidad_base")}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  {UNIDADES.map((u) => (
+                    <option key={u} value={u}>{u}</option>
+                  ))}
+                </select>
+                {errors.unidad_base && <p className="text-red-500 text-sm mt-1">{errors.unidad_base.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                <input
+                  {...register("categoria")}
+                  placeholder="Carnes, Pescados..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Unidad base *</label>
-              <select
-                {...register("unidad_base")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {UNIDADES.map((u) => (
-                  <option key={u} value={u}>{u}</option>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Alérgenos</label>
+              <div className="flex flex-wrap gap-2">
+                {ALERGENOS.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => toggleAlergeno(a.id)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${
+                      selectedAlergenos.includes(a.id)
+                        ? `${a.color} border-current`
+                        : "bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100"
+                    }`}
+                  >
+                    {a.label}
+                  </button>
                 ))}
-              </select>
-              {errors.unidad_base && <p className="text-red-500 text-sm mt-1">{errors.unidad_base.message}</p>}
+              </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-              <input
-                {...register("categoria")}
-                placeholder="Ej: Carnes, Pescados, Verduras..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Alérgenos (JSON)</label>
-              <input
-                {...register("alergenos")}
-                placeholder='["gluten","lactosa"]'
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div className="md:col-span-2 flex gap-3 justify-end">
+
+            <div className="flex gap-3 justify-end">
               <button
                 type="button"
                 onClick={handleCancel}
@@ -293,32 +330,59 @@ export default function Ingredientes() {
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Unidad</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Categoría</th>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Alérgenos</th>
+                <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio</th>
+                <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Proveedor</th>
                 <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {ingredientes.map((ing) => (
-                <tr key={ing.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-800">{ing.nombre}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{ing.unidad_base}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{ing.categoria ?? "-"}</td>
-                  <td className="px-4 py-3 text-sm text-gray-600">{ing.alergenos ?? "-"}</td>
-                  <td className="px-4 py-3 text-sm text-right">
-                    <button
-                      onClick={() => handleEdit(ing)}
-                      className="text-blue-600 hover:text-blue-800 mr-3"
-                    >
-                      <Pencil size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(ing.id)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {ingredientes.map((ing) => {
+                const alergenos = parseAlergenos(ing.alergenos);
+                return (
+                  <tr key={ing.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-800">{ing.nombre}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{ing.unidad_base}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{ing.categoria ?? "-"}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {alergenos.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {alergenos.map((a) => (
+                            <span key={a} className={`px-2 py-0.5 rounded-full text-xs font-medium ${getAlergenoColor(a)}`}>
+                              {getAlergenoLabel(a)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                      {ing.precio != null ? (
+                        ing.unidad_base === "g" ? `${(ing.precio * 1000).toFixed(2)} €/kg` :
+                        ing.unidad_base === "ml" ? `${(ing.precio * 1000).toFixed(2)} €/l` :
+                        `${ing.precio.toFixed(2)} €/${ing.unidad_base}`
+                      ) : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {ing.proveedor_nombre ?? "-"}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right">
+                      <button
+                        onClick={() => handleEdit(ing)}
+                        className="text-blue-600 hover:text-blue-800 mr-3"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(ing.id)}
+                        className="text-red-600 hover:text-red-800"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

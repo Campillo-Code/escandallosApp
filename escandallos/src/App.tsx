@@ -2,6 +2,8 @@ import { Routes, Route } from "react-router-dom";
 import Proveedores from "./pages/Proveedores";
 import Ingredientes from "./pages/Ingredientes";
 import Recetas from "./pages/Recetas";
+import Menus from "./pages/Menus";
+import Albaranes from "./pages/Albaranes";
 
 function App() {
   return (
@@ -47,8 +49,8 @@ function App() {
           <Route path="/recetas" element={<Recetas />} />
           <Route path="/ingredientes" element={<Ingredientes />} />
           <Route path="/proveedores" element={<Proveedores />} />
-          <Route path="/menus" element={<Placeholder title="Menús" />} />
-          <Route path="/albaranes" element={<Placeholder title="Albaranes" />} />
+          <Route path="/menus" element={<Menus />} />
+          <Route path="/albaranes" element={<Albaranes />} />
           <Route path="/inventario" element={<Placeholder title="Inventario" />} />
           <Route path="/reportes" element={<Placeholder title="Reportes" />} />
         </Routes>
