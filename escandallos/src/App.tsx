@@ -4,6 +4,8 @@ import Ingredientes from "./pages/Ingredientes";
 import Recetas from "./pages/Recetas";
 import Menus from "./pages/Menus";
 import Albaranes from "./pages/Albaranes";
+import Inventario from "./pages/Inventario";
+import Dashboard from "./pages/Dashboard";
 
 function App() {
   return (
@@ -51,36 +53,10 @@ function App() {
           <Route path="/proveedores" element={<Proveedores />} />
           <Route path="/menus" element={<Menus />} />
           <Route path="/albaranes" element={<Albaranes />} />
-          <Route path="/inventario" element={<Placeholder title="Inventario" />} />
+          <Route path="/inventario" element={<Inventario />} />
           <Route path="/reportes" element={<Placeholder title="Reportes" />} />
         </Routes>
       </main>
-    </div>
-  );
-}
-
-function Dashboard() {
-  return (
-    <div className="p-6">
-      <h2 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Total Recetas</p>
-          <p className="text-3xl font-bold text-slate-800">0</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Total Ingredientes</p>
-          <p className="text-3xl font-bold text-slate-800">0</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Food Cost Medio</p>
-          <p className="text-3xl font-bold text-green-600">0%</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
-          <p className="text-sm text-gray-500">Proveedores</p>
-          <p className="text-3xl font-bold text-slate-800">0</p>
-        </div>
-      </div>
     </div>
   );
 }

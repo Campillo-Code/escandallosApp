@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft } from "lucide-react";
+import { getAlergenoColor, getAlergenoLabel } from "../lib/alergenos";
 
 const menuSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
@@ -54,6 +55,7 @@ export default function Menus() {
   const [loading, setLoading] = useState(true);
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
   const [menuRecetas, setMenuRecetas] = useState<MenuReceta[]>([]);
+  const [menuAlergenos, setMenuAlergenos] = useState<string[]>([]);
   const [showRecetaForm, setShowRecetaForm] = useState(false);
 
   const {
@@ -104,6 +106,15 @@ export default function Menus() {
     }
   };
 
+  const loadMenuAlergenos = async (menuId: number) => {
+    try {
+      const data = await invoke<string[]>("get_menu_alergenos", { menuId });
+      setMenuAlergenos(data);
+    } catch (e) {
+      console.error("Error loading menu alergenos:", e);
+    }
+  };
+
   useEffect(() => {
     loadMenus();
     loadRecetas();
@@ -112,6 +123,7 @@ export default function Menus() {
   useEffect(() => {
     if (selectedMenu) {
       loadMenuRecetas(selectedMenu.id);
+      loadMenuAlergenos(selectedMenu.id);
     }
   }, [selectedMenu]);
 
@@ -224,6 +236,19 @@ export default function Menus() {
 
         {selectedMenu.descripcion && (
           <p className="text-gray-600 mb-4">{selectedMenu.descripcion}</p>
+        )}
+
+        {menuAlergenos.length > 0 && (
+          <div className="mb-4">
+            <p className="text-sm text-gray-500 mb-2">Alérgenos del menú:</p>
+            <div className="flex flex-wrap gap-2">
+              {menuAlergenos.map((a) => (
+                <span key={a} className={`px-3 py-1 rounded-full text-sm font-medium ${getAlergenoColor(a)}`}>
+                  {getAlergenoLabel(a)}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
 
         <div className="flex items-center justify-between mb-4">

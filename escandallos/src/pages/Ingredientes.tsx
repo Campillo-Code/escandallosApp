@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
-import { Pencil, Trash2, Plus, X, ArrowRightLeft } from "lucide-react";
+import { Pencil, Trash2, Plus, X, ArrowRightLeft, FileSpreadsheet } from "lucide-react";
+import { exportIngredientesExcel } from "../lib/exports";
 import { ALERGENOS, parseAlergenos, serializeAlergenos, getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 
 const ingredienteSchema = z.object({
@@ -161,18 +162,27 @@ export default function Ingredientes() {
             Conversor
           </button>
           {!showForm && (
-            <button
-              onClick={() => {
-                setEditingId(null);
-                reset();
-                setSelectedAlergenos([]);
-                setShowForm(true);
-              }}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={18} />
-              Nuevo Ingrediente
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  setEditingId(null);
+                  reset();
+                  setSelectedAlergenos([]);
+                  setShowForm(true);
+                }}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={18} />
+                Nuevo Ingrediente
+              </button>
+              <button
+                onClick={() => exportIngredientesExcel(ingredientes)}
+                className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors"
+              >
+                <FileSpreadsheet size={18} />
+                Exportar Excel
+              </button>
+            </>
           )}
         </div>
       </div>

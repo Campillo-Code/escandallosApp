@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
-import { Pencil, Trash2, Plus, X, ChevronLeft, CheckCircle } from "lucide-react";
+import { Pencil, Trash2, Plus, X, ChevronLeft, CheckCircle, FileText } from "lucide-react";
+import { exportAlbaranPDF } from "../lib/exports";
 
 const albaranSchema = z.object({
   proveedor_id: z.string().min(1, "Selecciona un proveedor"),
@@ -265,6 +266,13 @@ export default function Albaranes() {
               {selectedAlbaran.proveedor_nombre} · {selectedAlbaran.fecha_recepcion}
             </p>
           </div>
+          <button
+            onClick={() => exportAlbaranPDF(selectedAlbaran, detalles)}
+            className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors"
+          >
+            <FileText size={18} />
+            PDF
+          </button>
           {!selectedAlbaran.procesado && (
             <button
               onClick={() => handleProcesar(selectedAlbaran.id)}

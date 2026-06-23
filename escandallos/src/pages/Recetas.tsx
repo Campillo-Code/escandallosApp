@@ -3,7 +3,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
-import { Pencil, Trash2, Plus, X, ChevronLeft } from "lucide-react";
+import { Pencil, Trash2, Plus, X, ChevronLeft, FileText } from "lucide-react";
+import { exportRecetaPDF } from "../lib/exports";
 import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 
 const recetaSchema = z.object({
@@ -467,7 +468,32 @@ export default function Recetas() {
 
         {costeReceta && (
           <div className="mt-6">
-            <h3 className="text-lg font-semibold mb-4">Costes</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Costes</h3>
+              <button
+                onClick={() => {
+                  exportRecetaPDF({
+                    nombre: selectedReceta.nombre,
+                    descripcion: selectedReceta.descripcion,
+                    categoria: selectedReceta.categoria,
+                    porciones: selectedReceta.porciones,
+                    tiempo_preparacion: selectedReceta.tiempo_preparacion,
+                    precio_venta: selectedReceta.precio_venta,
+                    margen_porcentaje: selectedReceta.margen_porcentaje,
+                    ingredientes: costeReceta.ingredientes,
+                    alergenos: [],
+                    coste_total: costeReceta.coste_total,
+                    coste_porcion: costeReceta.coste_porcion,
+                    food_cost_pct: costeReceta.food_cost_pct,
+                    margen_real_pct: costeReceta.margen_real_pct,
+                  });
+                }}
+                className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors text-sm"
+              >
+                <FileText size={16} />
+                Exportar PDF
+              </button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="bg-white rounded-lg shadow p-4">
                 <p className="text-sm text-gray-500">Coste total</p>

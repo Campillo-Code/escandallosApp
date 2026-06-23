@@ -655,6 +655,33 @@ async fn delete_menu_receta(id: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn get_menu_alergenos(menu_id: i64) -> Result<Vec<String>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<(Option<String>,)> = sqlx::query_as(
+        "SELECT DISTINCT i.alergenos FROM menu_recetas mr INNER JOIN receta_ingredientes ri ON mr.receta_id = ri.receta_id INNER JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE mr.menu_id = ? AND i.alergenos IS NOT NULL AND i.alergenos != '' AND i.alergenos != '[]'"
+    )
+    .bind(menu_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut alergenos: Vec<String> = Vec::new();
+    for row in rows {
+        if let Some(json) = &row.0 {
+            if let Ok(parsed) = serde_json::from_str::<Vec<String>>(json) {
+                for a in parsed {
+                    if !alergenos.contains(&a) {
+                        alergenos.push(a);
+                    }
+                }
+            }
+        }
+    }
+    alergenos.sort();
+    Ok(alergenos)
+}
+
 // ========================================
 // ALBARANES
 // ========================================
@@ -839,6 +866,7 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
 
     for detalle in &detalles {
+        // Update price
         let current_price: Option<f64> = sqlx::query_scalar(
             "SELECT CAST(precio_por_unidad_base AS DOUBLE) FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1"
         )
@@ -871,6 +899,60 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
             .await
             .map_err(|e| e.to_string())?;
         }
+
+        // Update inventory stock
+        let unidad_base: Option<String> = sqlx::query_scalar("SELECT unidad_base FROM ingredientes WHERE id = ?")
+            .bind(detalle.ingrediente_id)
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // Convert quantity to base unit
+        let cantidad_base = if let Some(ref ub) = unidad_base {
+            if (detalle.unidad == "kg" && ub == "g") || (detalle.unidad == "l" && ub == "ml") {
+                detalle.cantidad * 1000.0
+            } else if (detalle.unidad == "g" && ub == "kg") || (detalle.unidad == "ml" && ub == "l") {
+                detalle.cantidad / 1000.0
+            } else {
+                detalle.cantidad
+            }
+        } else {
+            detalle.cantidad
+        };
+
+        // Upsert inventory
+        let existing_inv: Option<(i64,)> = sqlx::query_as("SELECT id FROM inventario WHERE ingrediente_id = ?")
+            .bind(detalle.ingrediente_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some((inv_id,)) = existing_inv {
+            sqlx::query("UPDATE inventario SET stock_actual = stock_actual + ?, ultima_actualizacion = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(cantidad_base)
+                .bind(inv_id)
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        } else {
+            sqlx::query("INSERT INTO inventario (ingrediente_id, stock_actual, stock_minimo, unidad) VALUES (?, ?, 0, ?)")
+                .bind(detalle.ingrediente_id)
+                .bind(cantidad_base)
+                .bind(unidad_base.as_deref().unwrap_or("ud"))
+                .execute(pool)
+                .await
+                .map_err(|e| e.to_string())?;
+        }
+
+        // Record movement
+        sqlx::query("INSERT INTO inventario_movimientos (ingrediente_id, tipo, cantidad, referencia, albaran_id, notas) VALUES (?, 'entrada', ?, ?, ?, 'Entrada por albarán')")
+            .bind(detalle.ingrediente_id)
+            .bind(cantidad_base)
+            .bind(format!("Albarán #{}", albaran_id))
+            .bind(albaran_id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     sqlx::query("UPDATE albaranes SET procesado = 1 WHERE id = ?")
@@ -883,6 +965,265 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
 }
 
 // ========================================
+// INVENTARIO
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Inventario {
+    pub id: i64,
+    pub ingrediente_id: i64,
+    pub ingrediente_nombre: Option<String>,
+    pub unidad_base: Option<String>,
+    pub stock_actual: f64,
+    pub stock_minimo: f64,
+    pub unidad: String,
+    pub ubicacion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InventarioInput {
+    pub ingrediente_id: i64,
+    pub stock_actual: f64,
+    pub stock_minimo: f64,
+    pub unidad: String,
+    pub ubicacion: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct InventarioMovimiento {
+    pub id: i64,
+    pub ingrediente_id: i64,
+    pub ingrediente_nombre: Option<String>,
+    pub tipo: String,
+    pub cantidad: f64,
+    pub referencia: Option<String>,
+    pub albaran_id: Option<i64>,
+    pub receta_id: Option<i64>,
+    pub notas: Option<String>,
+    pub fecha: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InventarioMovimientoInput {
+    pub ingrediente_id: i64,
+    pub tipo: String,
+    pub cantidad: f64,
+    pub referencia: Option<String>,
+    pub albaran_id: Option<i64>,
+    pub receta_id: Option<i64>,
+    pub notas: Option<String>,
+}
+
+#[tauri::command]
+async fn get_inventario() -> Result<Vec<Inventario>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<Inventario> = sqlx::query_as(
+        "SELECT inv.id, inv.ingrediente_id, i.nombre AS ingrediente_nombre, i.unidad_base, CAST(inv.stock_actual AS DOUBLE) AS stock_actual, CAST(inv.stock_minimo AS DOUBLE) AS stock_minimo, inv.unidad, inv.ubicacion FROM inventario inv INNER JOIN ingredientes i ON inv.ingrediente_id = i.id ORDER BY i.nombre"
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn upsert_inventario(input: InventarioInput) -> Result<i64, String> {
+    let pool = db::get_pool();
+    let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM inventario WHERE ingrediente_id = ?")
+        .bind(input.ingrediente_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if let Some((id,)) = existing {
+        sqlx::query("UPDATE inventario SET stock_actual = ?, stock_minimo = ?, unidad = ?, ubicacion = ?, ultima_actualizacion = CURRENT_TIMESTAMP WHERE id = ?")
+            .bind(input.stock_actual)
+            .bind(input.stock_minimo)
+            .bind(&input.unidad)
+            .bind(&input.ubicacion)
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(id)
+    } else {
+        let result = sqlx::query("INSERT INTO inventario (ingrediente_id, stock_actual, stock_minimo, unidad, ubicacion) VALUES (?, ?, ?, ?, ?)")
+            .bind(input.ingrediente_id)
+            .bind(input.stock_actual)
+            .bind(input.stock_minimo)
+            .bind(&input.unidad)
+            .bind(&input.ubicacion)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(result.last_insert_id() as i64)
+    }
+}
+
+#[tauri::command]
+async fn delete_inventario(ingrediente_id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM inventario WHERE ingrediente_id = ?")
+        .bind(ingrediente_id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_inventario_movimientos(ingrediente_id: Option<i64>) -> Result<Vec<InventarioMovimiento>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<InventarioMovimiento> = if let Some(iid) = ingrediente_id {
+        sqlx::query_as(
+            "SELECT m.id, m.ingrediente_id, i.nombre AS ingrediente_nombre, m.tipo, CAST(m.cantidad AS DOUBLE) AS cantidad, m.referencia, m.albaran_id, m.receta_id, m.notas, DATE_FORMAT(m.fecha, '%Y-%m-%d %H:%i') AS fecha FROM inventario_movimientos m INNER JOIN ingredientes i ON m.ingrediente_id = i.id WHERE m.ingrediente_id = ? ORDER BY m.fecha DESC"
+        )
+        .bind(iid)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as(
+            "SELECT m.id, m.ingrediente_id, i.nombre AS ingrediente_nombre, m.tipo, CAST(m.cantidad AS DOUBLE) AS cantidad, m.referencia, m.albaran_id, m.receta_id, m.notas, DATE_FORMAT(m.fecha, '%Y-%m-%d %H:%i') AS fecha FROM inventario_movimientos m INNER JOIN ingredientes i ON m.ingrediente_id = i.id ORDER BY m.fecha DESC LIMIT 100"
+        )
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn add_inventario_movimiento(input: InventarioMovimientoInput) -> Result<i64, String> {
+    let pool = db::get_pool();
+
+    // Insert movement
+    let result = sqlx::query(
+        "INSERT INTO inventario_movimientos (ingrediente_id, tipo, cantidad, referencia, albaran_id, receta_id, notas) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    )
+    .bind(input.ingrediente_id)
+    .bind(&input.tipo)
+    .bind(input.cantidad)
+    .bind(&input.referencia)
+    .bind(input.albaran_id)
+    .bind(input.receta_id)
+    .bind(&input.notas)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Update stock
+    let delta = match input.tipo.as_str() {
+        "entrada" => input.cantidad,
+        "salida" | "merma" => -input.cantidad,
+        "ajuste" => input.cantidad, // For ajuste, cantidad is the new absolute value
+        _ => 0.0,
+    };
+
+    if input.tipo == "ajuste" {
+        sqlx::query("UPDATE inventario SET stock_actual = ?, ultima_actualizacion = CURRENT_TIMESTAMP WHERE ingrediente_id = ?")
+            .bind(input.cantidad)
+            .bind(input.ingrediente_id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    } else {
+        sqlx::query("UPDATE inventario SET stock_actual = stock_actual + ?, ultima_actualizacion = CURRENT_TIMESTAMP WHERE ingrediente_id = ?")
+            .bind(delta)
+            .bind(input.ingrediente_id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn delete_inventario_movimiento(id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM inventario_movimientos WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ========================================
+// DASHBOARD
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DashboardData {
+    pub total_recetas: i64,
+    pub total_ingredientes: i64,
+    pub total_proveedores: i64,
+    pub food_cost_medio: Option<f64>,
+    pub receta_mas_rentable: Option<String>,
+    pub ingrediente_mas_caro: Option<String>,
+    pub alertas_stock_bajo: Vec<String>,
+    pub ultimos_albaranes: Vec<String>,
+}
+
+#[tauri::command]
+async fn get_dashboard_data() -> Result<DashboardData, String> {
+    let pool = db::get_pool();
+
+    let total_recetas: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM recetas")
+        .fetch_one(pool).await.map_err(|e| e.to_string())?;
+
+    let total_ingredientes: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ingredientes")
+        .fetch_one(pool).await.map_err(|e| e.to_string())?;
+
+    let total_proveedores: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM proveedores")
+        .fetch_one(pool).await.map_err(|e| e.to_string())?;
+
+    // Average food cost across all recipes with prices
+    let food_cost_medio: Option<f64> = sqlx::query_scalar(
+        "SELECT CAST(AVG(CASE WHEN precio_venta > 0 THEN (coste.porce / precio_venta) * 100 END) AS DOUBLE) FROM (SELECT r.id, r.precio_venta, CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) AS DOUBLE) AS porce FROM recetas r INNER JOIN receta_ingredientes ri ON r.id = ri.receta_id LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 GROUP BY r.id) AS coste"
+    )
+    .fetch_optional(pool).await.map_err(|e| e.to_string())?.flatten();
+
+    // Most profitable recipe (lowest food cost %)
+    let receta_mas_rentable: Option<String> = sqlx::query_scalar(
+        "SELECT r.nombre FROM recetas r INNER JOIN (SELECT ri.receta_id, SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) AS coste FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 GROUP BY ri.receta_id) AS c ON r.id = c.receta_id WHERE r.precio_venta > 0 ORDER BY (c.coste / r.precio_venta) ASC LIMIT 1"
+    )
+    .fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+    // Most expensive ingredient (by price per base unit)
+    let ingrediente_mas_caro: Option<String> = sqlx::query_scalar(
+        "SELECT i.nombre FROM ingredientes i INNER JOIN ingrediente_precios ip ON i.id = ip.ingrediente_id AND ip.es_predeterminado = 1 ORDER BY ip.precio_por_unidad_base DESC LIMIT 1"
+    )
+    .fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+    // Low stock alerts
+    let alertas_rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT CONCAT(i.nombre, ' (', inv.stock_actual, ' ', inv.unidad, ')') FROM inventario inv INNER JOIN ingredientes i ON inv.ingrediente_id = i.id WHERE inv.stock_actual <= inv.stock_minimo"
+    )
+    .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let alertas_stock_bajo: Vec<String> = alertas_rows.into_iter().map(|r| r.0).collect();
+
+    // Recent albaranes
+    let albaranes_rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT CONCAT('#', a.id, ' - ', p.nombre, ' (', DATE_FORMAT(a.fecha_recepcion, '%d/%m/%y'), ')') FROM albaranes a INNER JOIN proveedores p ON a.proveedor_id = p.id ORDER BY a.fecha_recepcion DESC LIMIT 5"
+    )
+    .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let ultimos_albaranes: Vec<String> = albaranes_rows.into_iter().map(|r| r.0).collect();
+
+    Ok(DashboardData {
+        total_recetas: total_recetas.0,
+        total_ingredientes: total_ingredientes.0,
+        total_proveedores: total_proveedores.0,
+        food_cost_medio,
+        receta_mas_rentable,
+        ingrediente_mas_caro,
+        alertas_stock_bajo,
+        ultimos_albaranes,
+    })
+}
+
+// ========================================
 // INICIO
 // ========================================
 
@@ -890,6 +1231,8 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|_app| {
             tauri::async_runtime::spawn(async {
                 if let Err(e) = db::init_db().await {
@@ -925,6 +1268,7 @@ pub fn run() {
             get_menu_recetas,
             add_menu_receta,
             delete_menu_receta,
+            get_menu_alergenos,
             get_albaranes,
             get_albaran,
             create_albaran,
@@ -934,6 +1278,13 @@ pub fn run() {
             add_albaran_detalle,
             delete_albaran_detalle,
             procesar_albaran,
+            get_inventario,
+            upsert_inventario,
+            delete_inventario,
+            get_inventario_movimientos,
+            add_inventario_movimiento,
+            delete_inventario_movimiento,
+            get_dashboard_data,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
