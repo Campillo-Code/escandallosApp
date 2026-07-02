@@ -72,6 +72,25 @@ interface Ingrediente {
   unidad_base: string;
 }
 
+interface Guarnicion {
+  id: number;
+  nombre: string;
+  descripcion: string | null;
+}
+
+interface CosteGuarnicion {
+  nombre: string;
+  coste_total: number;
+  ingredientes: { ingrediente_nombre: string; cantidad: number; unidad: string; precio_unitario: number | null; precio_por_unidad_receta: number | null; merma_porcentaje: number; coste: number; }[];
+}
+
+interface RecetaGuarnicion {
+  id: number;
+  receta_id: number;
+  guarnicion_id: number;
+  guarnicion_nombre: string | null;
+}
+
 const ingredienteRecetaSchema = z.object({
   ingrediente_id: z.string().min(1, "Selecciona un ingrediente"),
   cantidad: z.string().min(1, "Cantidad obligatoria"),
@@ -94,6 +113,10 @@ export default function Recetas() {
   const [costeReceta, setCosteReceta] = useState<CosteReceta | null>(null);
   const [alergenosReceta, setAlergenosReceta] = useState<string[]>([]);
   const [alergenosMap, setAlergenosMap] = useState<Record<number, string[]>>({});
+  const [guarniciones, setGuarniciones] = useState<Guarnicion[]>([]);
+  const [recetaGuarniciones, setRecetaGuarniciones] = useState<RecetaGuarnicion[]>([]);
+  const [costesGuarniciones, setCostesGuarniciones] = useState<CosteGuarnicion[]>([]);
+  const [showGuarnForm, setShowGuarnForm] = useState(false);
 
   const {
     register,
@@ -165,6 +188,7 @@ export default function Recetas() {
   useEffect(() => {
     loadRecetas();
     loadIngredientes();
+    invoke<Guarnicion[]>("get_guarniciones").then(setGuarniciones).catch(console.error);
   }, []);
 
   useEffect(() => {
@@ -188,8 +212,30 @@ export default function Recetas() {
       loadRecetaIngredientes(selectedReceta.id);
       loadCosteReceta(selectedReceta.id);
       loadAlergenosReceta(selectedReceta.id);
+      // Load guarniciones for this receta
+      invoke<RecetaGuarnicion[]>("get_receta_guarniciones", { recetaId: selectedReceta.id })
+        .then(setRecetaGuarniciones)
+        .catch(console.error);
     }
   }, [selectedReceta]);
+
+  useEffect(() => {
+    if (recetaGuarniciones.length > 0) {
+      const loadAll = async () => {
+        const costes: CosteGuarnicion[] = [];
+        for (const rg of recetaGuarniciones) {
+          try {
+            const c = await invoke<CosteGuarnicion>("get_guarnicion_coste", { guarnicionId: rg.guarnicion_id });
+            costes.push(c);
+          } catch { /* ignore */ }
+        }
+        setCostesGuarniciones(costes);
+      };
+      loadAll();
+    } else {
+      setCostesGuarniciones([]);
+    }
+  }, [recetaGuarniciones]);
 
   const onSubmitReceta = async (data: RecetaFormData) => {
     try {
@@ -481,11 +527,16 @@ export default function Recetas() {
                     precio_venta: selectedReceta.precio_venta,
                     margen_porcentaje: selectedReceta.margen_porcentaje,
                     ingredientes: costeReceta.ingredientes,
-                    alergenos: [],
+                    alergenos: alergenosReceta,
                     coste_total: costeReceta.coste_total,
                     coste_porcion: costeReceta.coste_porcion,
                     food_cost_pct: costeReceta.food_cost_pct,
                     margen_real_pct: costeReceta.margen_real_pct,
+                    guarniciones: costesGuarniciones.map(g => ({
+                      nombre: g.nombre,
+                      coste_total: g.coste_total,
+                      ingredientes: g.ingredientes,
+                    })),
                   });
                 }}
                 className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors text-sm"
@@ -574,6 +625,131 @@ export default function Recetas() {
             </div>
           </div>
         )}
+
+        {/* Guarniciones */}
+        <div className="mt-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Guarniciones</h3>
+            {!showGuarnForm && (
+              <button
+                onClick={() => setShowGuarnForm(true)}
+                className="flex items-center gap-2 bg-amber-600 text-white px-4 py-2 rounded-lg hover:bg-amber-700 transition-colors"
+              >
+                <Plus size={18} />
+                Añadir Guarnición
+              </button>
+            )}
+          </div>
+
+          {showGuarnForm && (
+            <div className="bg-white rounded-lg shadow p-4 mb-4">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold">Seleccionar guarnición</h4>
+                <button onClick={() => setShowGuarnForm(false)} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                {guarniciones
+                  .filter(g => !recetaGuarniciones.some(rg => rg.guarnicion_id === g.id))
+                  .map(g => (
+                    <button
+                      key={g.id}
+                      onClick={async () => {
+                        try {
+                          await invoke("add_receta_guarnicion", { input: { receta_id: selectedReceta.id, guarnicion_id: g.id } });
+                          setShowGuarnForm(false);
+                          setRecetaGuarniciones(await invoke("get_receta_guarniciones", { recetaId: selectedReceta.id }));
+                        } catch (e) { alert("Error: " + e); }
+                      }}
+                      className="text-left p-3 border border-gray-200 rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-colors"
+                    >
+                      <p className="text-sm font-medium text-gray-800">{g.nombre}</p>
+                      {g.descripcion && <p className="text-xs text-gray-500 mt-0.5">{g.descripcion}</p>}
+                    </button>
+                  ))}
+                {guarniciones.filter(g => !recetaGuarniciones.some(rg => rg.guarnicion_id === g.id)).length === 0 && (
+                  <p className="text-sm text-gray-500 col-span-full">Todas las guarniciones ya están añadidas</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {recetaGuarniciones.length > 0 && costesGuarniciones.length > 0 && (
+            <div className="space-y-3">
+              {recetaGuarniciones.map((rg, idx) => {
+                const coste = costesGuarniciones[idx];
+                if (!coste) return null;
+                const costeTotalReceta = costeReceta ? costeReceta.coste_total : 0;
+                const combinado = costeTotalReceta + coste.coste_total;
+                return (
+                  <div key={rg.id} className="bg-white rounded-lg shadow overflow-hidden">
+                    <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-gray-800">+ {rg.guarnicion_nombre}</span>
+                        <span className="text-sm text-gray-500 ml-3">Coste guarnición: {coste.coste_total.toFixed(2)} €</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium text-gray-800">Combinado: {combinado.toFixed(2)} €/porción</span>
+                        <button
+                          onClick={async () => {
+                            if (!confirm("¿Eliminar esta guarnición de la receta?")) return;
+                            try {
+                              await invoke("delete_receta_guarnicion", { id: rg.id });
+                              setRecetaGuarniciones(await invoke("get_receta_guarniciones", { recetaId: selectedReceta.id }));
+                            } catch (e) { alert("Error: " + e); }
+                          }}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                    <table className="w-full">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Ingrediente</th>
+                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-500">Cantidad</th>
+                          <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Unidad</th>
+                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-500">Precio/ud</th>
+                          <th className="text-right px-4 py-2 text-xs font-medium text-gray-500">Coste</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {coste.ingredientes.map((ci, i) => (
+                          <tr key={i} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 text-sm text-gray-800">{ci.ingrediente_nombre}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600 text-right">{ci.cantidad}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600">{ci.unidad}</td>
+                            <td className="px-4 py-2 text-sm text-gray-600 text-right">{ci.precio_por_unidad_receta?.toFixed(2) ?? "-"} €</td>
+                            <td className="px-4 py-2 text-sm text-gray-800 text-right font-medium">{ci.coste.toFixed(2)} €</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-amber-50 border-t border-amber-200">
+                        <tr>
+                          <td colSpan={4} className="px-4 py-2 text-sm font-semibold text-right">Total guarnición</td>
+                          <td className="px-4 py-2 text-sm font-bold text-right">{coste.coste_total.toFixed(2)} €</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                );
+              })}
+              {costeReceta && (
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium text-gray-700">Coste receta + guarniciones</span>
+                    <span className="text-xl font-bold text-blue-700">
+                      {costeReceta.coste_total.toFixed(2)} + {costesGuarniciones.reduce((s, c) => s + c.coste_total, 0).toFixed(2)} = {(costeReceta.coste_total + costesGuarniciones.reduce((s, c) => s + c.coste_total, 0)).toFixed(2)} €
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {recetaGuarniciones.length === 0 && (
+            <p className="text-sm text-gray-500">No hay guarniciones asociadas</p>
+          )}
+        </div>
       </div>
     );
   }

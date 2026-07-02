@@ -3,6 +3,7 @@ import Proveedores from "./pages/Proveedores";
 import Ingredientes from "./pages/Ingredientes";
 import Recetas from "./pages/Recetas";
 import Menus from "./pages/Menus";
+import Guarniciones from "./pages/Guarniciones";
 import Albaranes from "./pages/Albaranes";
 import Inventario from "./pages/Inventario";
 import Dashboard from "./pages/Dashboard";
@@ -32,6 +33,9 @@ function App() {
           <a href="/menus" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
             📋 Menús
           </a>
+          <a href="/guarniciones" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
+            🥗 Guarniciones
+          </a>
           <a href="/albaranes" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
             📄 Albaranes
           </a>
@@ -52,6 +56,7 @@ function App() {
           <Route path="/ingredientes" element={<Ingredientes />} />
           <Route path="/proveedores" element={<Proveedores />} />
           <Route path="/menus" element={<Menus />} />
+          <Route path="/guarniciones" element={<Guarniciones />} />
           <Route path="/albaranes" element={<Albaranes />} />
           <Route path="/inventario" element={<Inventario />} />
           <Route path="/reportes" element={<Placeholder title="Reportes" />} />

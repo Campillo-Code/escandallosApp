@@ -25,6 +25,17 @@ interface RecetaData {
   coste_porcion: number;
   food_cost_pct: number | null;
   margen_real_pct: number | null;
+  guarniciones?: {
+    nombre: string;
+    coste_total: number;
+    ingredientes: {
+      ingrediente_nombre: string;
+      cantidad: number;
+      unidad: string;
+      precio_por_unidad_receta: number | null;
+      coste: number;
+    }[];
+  }[];
 }
 
 export async function exportRecetaPDF(receta: RecetaData) {
@@ -99,6 +110,48 @@ export async function exportRecetaPDF(receta: RecetaData) {
   }
   if (receta.precio_venta != null) {
     doc.text(`Precio venta: ${receta.precio_venta.toFixed(2)} €/porción`, 14, y);
+  }
+
+  if (receta.guarniciones && receta.guarniciones.length > 0) {
+    y += 14;
+    doc.setFontSize(14);
+    doc.text("Guarniciones", 14, y);
+    y += 6;
+
+    let totalGuarniciones = 0;
+    for (const g of receta.guarniciones) {
+      totalGuarniciones += g.coste_total;
+
+      doc.setFontSize(11);
+      doc.text(`+ ${g.nombre}`, 14, y);
+      doc.text(`Coste: ${g.coste_total.toFixed(2)} €`, 160, y);
+      y += 6;
+
+      const guarnData = g.ingredientes.map((ing) => [
+        ing.ingrediente_nombre,
+        `${ing.cantidad} ${ing.unidad}`,
+        ing.precio_por_unidad_receta != null ? `${ing.precio_por_unidad_receta.toFixed(4)} €` : "-",
+        `${ing.coste.toFixed(2)} €`,
+      ]);
+
+      autoTable(doc, {
+        startY: y,
+        head: [["Ingrediente", "Cantidad", "Precio/ud", "Coste"]],
+        body: guarnData,
+        theme: "striped",
+        styles: { fontSize: 8 },
+        margin: { left: 20 },
+      });
+
+      // @ts-ignore
+      y = doc.lastAutoTable.finalY + 6;
+    }
+
+    doc.setFontSize(11);
+    doc.text(`Total guarniciones: ${totalGuarniciones.toFixed(2)} €`, 14, y);
+    y += 6;
+    doc.setFontSize(12);
+    doc.text(`Coste total (receta + guarniciones): ${(receta.coste_total + totalGuarniciones).toFixed(2)} €`, 14, y);
   }
 
   const fileName = `${receta.nombre.replace(/\s+/g, "_")}.pdf`;

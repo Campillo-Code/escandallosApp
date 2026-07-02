@@ -1151,6 +1151,212 @@ async fn delete_inventario_movimiento(id: i64) -> Result<(), String> {
 }
 
 // ========================================
+// GUARNICIONES
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Guarnicion {
+    pub id: i64,
+    pub nombre: String,
+    pub descripcion: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GuarnicionInput {
+    pub nombre: String,
+    pub descripcion: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct GuarnicionIngrediente {
+    pub id: i64,
+    pub guarnicion_id: i64,
+    pub ingrediente_id: i64,
+    pub ingrediente_nombre: Option<String>,
+    pub cantidad: f64,
+    pub unidad: String,
+    pub merma_porcentaje: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct GuarnicionIngredienteInput {
+    pub guarnicion_id: i64,
+    pub ingrediente_id: i64,
+    pub cantidad: f64,
+    pub unidad: String,
+    pub merma_porcentaje: Option<f64>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct RecetaGuarnicion {
+    pub id: i64,
+    pub receta_id: i64,
+    pub guarnicion_id: i64,
+    pub guarnicion_nombre: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RecetaGuarnicionInput {
+    pub receta_id: i64,
+    pub guarnicion_id: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CosteGuarnicion {
+    pub nombre: String,
+    pub coste_total: f64,
+    pub ingredientes: Vec<CosteIngrediente>,
+}
+
+// CRUD Guarniciones
+#[tauri::command]
+async fn get_guarniciones() -> Result<Vec<Guarnicion>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<Guarnicion> = sqlx::query_as("SELECT id, nombre, descripcion FROM guarniciones ORDER BY nombre")
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn create_guarnicion(input: GuarnicionInput) -> Result<i64, String> {
+    let pool = db::get_pool();
+    let result = sqlx::query("INSERT INTO guarniciones (nombre, descripcion) VALUES (?, ?)")
+        .bind(&input.nombre).bind(&input.descripcion)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn update_guarnicion(id: i64, input: GuarnicionInput) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("UPDATE guarniciones SET nombre = ?, descripcion = ? WHERE id = ?")
+        .bind(&input.nombre).bind(&input.descripcion).bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_guarnicion(id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM guarniciones WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// CRUD Guarnicion Ingredientes
+#[tauri::command]
+async fn get_guarnicion_ingredientes(guarnicion_id: i64) -> Result<Vec<GuarnicionIngrediente>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<GuarnicionIngrediente> = sqlx::query_as(
+        "SELECT gi.id, gi.guarnicion_id, gi.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(gi.cantidad AS DOUBLE) AS cantidad, gi.unidad, CAST(gi.merma_porcentaje AS DOUBLE) AS merma_porcentaje FROM guarnicion_ingredientes gi INNER JOIN ingredientes i ON gi.ingrediente_id = i.id WHERE gi.guarnicion_id = ? ORDER BY gi.id"
+    ).bind(guarnicion_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn add_guarnicion_ingrediente(input: GuarnicionIngredienteInput) -> Result<i64, String> {
+    let pool = db::get_pool();
+    let result = sqlx::query("INSERT INTO guarnicion_ingredientes (guarnicion_id, ingrediente_id, cantidad, unidad, merma_porcentaje) VALUES (?, ?, ?, ?, ?)")
+        .bind(input.guarnicion_id).bind(input.ingrediente_id).bind(input.cantidad)
+        .bind(&input.unidad).bind(input.merma_porcentaje.unwrap_or(0.0))
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn delete_guarnicion_ingrediente(id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM guarnicion_ingredientes WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// CRUD Receta-Guarnicion
+#[tauri::command]
+async fn get_receta_guarniciones(receta_id: i64) -> Result<Vec<RecetaGuarnicion>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<RecetaGuarnicion> = sqlx::query_as(
+        "SELECT rg.id, rg.receta_id, rg.guarnicion_id, g.nombre AS guarnicion_nombre FROM receta_guarniciones rg INNER JOIN guarniciones g ON rg.guarnicion_id = g.id WHERE rg.receta_id = ? ORDER BY g.nombre"
+    ).bind(receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn add_receta_guarnicion(input: RecetaGuarnicionInput) -> Result<i64, String> {
+    let pool = db::get_pool();
+    let result = sqlx::query("INSERT INTO receta_guarniciones (receta_id, guarnicion_id) VALUES (?, ?)")
+        .bind(input.receta_id).bind(input.guarnicion_id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn delete_receta_guarnicion(id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM receta_guarniciones WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// Coste de guarnicion
+#[tauri::command]
+async fn get_guarnicion_coste(guarnicion_id: i64) -> Result<CosteGuarnicion, String> {
+    let pool = db::get_pool();
+    let guarnicion: Guarnicion = sqlx::query_as("SELECT id, nombre, descripcion FROM guarniciones WHERE id = ?")
+        .bind(guarnicion_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
+        .ok_or("Guarnición no encontrada".to_string())?;
+
+    let rows: Vec<(String, f64, String, f64, String)> = sqlx::query_as(
+        "SELECT i.nombre, CAST(gi.cantidad AS DOUBLE), gi.unidad, CAST(gi.merma_porcentaje AS DOUBLE), i.unidad_base FROM guarnicion_ingredientes gi INNER JOIN ingredientes i ON gi.ingrediente_id = i.id WHERE gi.guarnicion_id = ?"
+    ).bind(guarnicion_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut ingredientes: Vec<CosteIngrediente> = Vec::new();
+    let mut coste_total: f64 = 0.0;
+
+    for row in rows {
+        let nombre = row.0;
+        let cantidad = row.1;
+        let unidad = row.2;
+        let merma = row.3;
+        let unidad_base = row.4;
+
+        let ingrediente_id: Option<i64> = sqlx::query_scalar("SELECT id FROM ingredientes WHERE nombre = ?")
+            .bind(&nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+        let precio_unitario: Option<f64> = if let Some(iid) = ingrediente_id {
+            sqlx::query_scalar("SELECT CAST(precio_por_unidad_base AS DOUBLE) FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1")
+                .bind(iid).fetch_optional(pool).await.map_err(|e| e.to_string())?.flatten()
+        } else {
+            None
+        };
+
+        let cantidad_base = if unidad == unidad_base { cantidad }
+        else if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { cantidad * 1000.0 }
+        else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { cantidad / 1000.0 }
+        else { cantidad };
+
+        let coste = if let Some(pu) = precio_unitario {
+            cantidad_base * pu * (1.0 + merma / 100.0)
+        } else { 0.0 };
+
+        coste_total += coste;
+
+        let precio_por_unidad_receta = precio_unitario.map(|pu| {
+            if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { pu * 1000.0 }
+            else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { pu / 1000.0 }
+            else { pu }
+        });
+
+        ingredientes.push(CosteIngrediente {
+            ingrediente_nombre: nombre, cantidad, unidad, merma_porcentaje: merma,
+            precio_unitario, precio_por_unidad_receta, coste,
+        });
+    }
+
+    Ok(CosteGuarnicion { nombre: guarnicion.nombre, coste_total, ingredientes })
+}
+
+// ========================================
 // DASHBOARD
 // ========================================
 
@@ -1285,6 +1491,17 @@ pub fn run() {
             add_inventario_movimiento,
             delete_inventario_movimiento,
             get_dashboard_data,
+            get_guarniciones,
+            create_guarnicion,
+            update_guarnicion,
+            delete_guarnicion,
+            get_guarnicion_ingredientes,
+            add_guarnicion_ingrediente,
+            delete_guarnicion_ingrediente,
+            get_receta_guarniciones,
+            add_receta_guarnicion,
+            delete_receta_guarnicion,
+            get_guarnicion_coste,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
