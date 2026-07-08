@@ -1159,12 +1159,18 @@ pub struct Guarnicion {
     pub id: i64,
     pub nombre: String,
     pub descripcion: Option<String>,
+    pub porciones: i64,
+    pub margen_porcentaje: f64,
+    pub precio_venta: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct GuarnicionInput {
     pub nombre: String,
     pub descripcion: Option<String>,
+    pub porciones: Option<i64>,
+    pub margen_porcentaje: Option<f64>,
+    pub precio_venta: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -1205,6 +1211,11 @@ pub struct RecetaGuarnicionInput {
 pub struct CosteGuarnicion {
     pub nombre: String,
     pub coste_total: f64,
+    pub porciones: i64,
+    pub coste_porcion: f64,
+    pub margen_porcentaje: f64,
+    pub precio_venta: Option<f64>,
+    pub precio_venta_sugerido: f64,
     pub ingredientes: Vec<CosteIngrediente>,
 }
 
@@ -1212,7 +1223,7 @@ pub struct CosteGuarnicion {
 #[tauri::command]
 async fn get_guarniciones() -> Result<Vec<Guarnicion>, String> {
     let pool = db::get_pool();
-    let rows: Vec<Guarnicion> = sqlx::query_as("SELECT id, nombre, descripcion FROM guarniciones ORDER BY nombre")
+    let rows: Vec<Guarnicion> = sqlx::query_as("SELECT id, nombre, descripcion, porciones, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(precio_venta AS DOUBLE) AS precio_venta FROM guarniciones ORDER BY nombre")
         .fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
@@ -1220,8 +1231,8 @@ async fn get_guarniciones() -> Result<Vec<Guarnicion>, String> {
 #[tauri::command]
 async fn create_guarnicion(input: GuarnicionInput) -> Result<i64, String> {
     let pool = db::get_pool();
-    let result = sqlx::query("INSERT INTO guarniciones (nombre, descripcion) VALUES (?, ?)")
-        .bind(&input.nombre).bind(&input.descripcion)
+    let result = sqlx::query("INSERT INTO guarniciones (nombre, descripcion, porciones, margen_porcentaje, precio_venta) VALUES (?, ?, ?, ?, ?)")
+        .bind(&input.nombre).bind(&input.descripcion).bind(input.porciones.unwrap_or(1)).bind(input.margen_porcentaje.unwrap_or(30.0)).bind(input.precio_venta)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(result.last_insert_id() as i64)
 }
@@ -1229,8 +1240,8 @@ async fn create_guarnicion(input: GuarnicionInput) -> Result<i64, String> {
 #[tauri::command]
 async fn update_guarnicion(id: i64, input: GuarnicionInput) -> Result<(), String> {
     let pool = db::get_pool();
-    sqlx::query("UPDATE guarniciones SET nombre = ?, descripcion = ? WHERE id = ?")
-        .bind(&input.nombre).bind(&input.descripcion).bind(id)
+    sqlx::query("UPDATE guarniciones SET nombre = ?, descripcion = ?, porciones = ?, margen_porcentaje = ?, precio_venta = ? WHERE id = ?")
+        .bind(&input.nombre).bind(&input.descripcion).bind(input.porciones.unwrap_or(1)).bind(input.margen_porcentaje.unwrap_or(30.0)).bind(input.precio_venta).bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -1302,7 +1313,7 @@ async fn delete_receta_guarnicion(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_guarnicion_coste(guarnicion_id: i64) -> Result<CosteGuarnicion, String> {
     let pool = db::get_pool();
-    let guarnicion: Guarnicion = sqlx::query_as("SELECT id, nombre, descripcion FROM guarniciones WHERE id = ?")
+    let guarnicion: Guarnicion = sqlx::query_as("SELECT id, nombre, descripcion, porciones, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(precio_venta AS DOUBLE) AS precio_venta FROM guarniciones WHERE id = ?")
         .bind(guarnicion_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .ok_or("Guarnición no encontrada".to_string())?;
 
@@ -1353,7 +1364,347 @@ async fn get_guarnicion_coste(guarnicion_id: i64) -> Result<CosteGuarnicion, Str
         });
     }
 
-    Ok(CosteGuarnicion { nombre: guarnicion.nombre, coste_total, ingredientes })
+    let margen = guarnicion.margen_porcentaje;
+    let precio_venta = guarnicion.precio_venta;
+    let porciones = guarnicion.porciones;
+    let coste_porcion = if porciones > 0 { coste_total / porciones as f64 } else { coste_total };
+    let precio_venta_sugerido = if margen < 100.0 && margen > 0.0 { coste_porcion / (1.0 - margen / 100.0) } else { coste_porcion * 2.0 };
+
+    Ok(CosteGuarnicion { nombre: guarnicion.nombre, coste_total, porciones, coste_porcion, margen_porcentaje: margen, precio_venta, precio_venta_sugerido, ingredientes })
+}
+
+// ========================================
+// FICHAS TECNICAS
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct FichaTecnica {
+    pub id: i64,
+    pub receta_id: i64,
+    pub receta_nombre: Option<String>,
+    pub pasos_preparacion: Option<String>,
+    pub fotos: Option<String>,
+    pub notas_adicionales: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct FichaTecnicaInput {
+    pub receta_id: i64,
+    pub pasos_preparacion: Option<String>,
+    pub fotos: Option<String>,
+    pub notas_adicionales: Option<String>,
+}
+
+#[tauri::command]
+async fn get_fichas_tecnicas() -> Result<Vec<FichaTecnica>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<FichaTecnica> = sqlx::query_as(
+        "SELECT ft.id, ft.receta_id, r.nombre AS receta_nombre, ft.pasos_preparacion, CAST(ft.fotos AS CHAR) AS fotos, ft.notas_adicionales FROM fichas_tecnicas ft INNER JOIN recetas r ON ft.receta_id = r.id ORDER BY r.nombre"
+    ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn get_ficha_tecnica(receta_id: i64) -> Result<Option<FichaTecnica>, String> {
+    let pool = db::get_pool();
+    let row: Option<FichaTecnica> = sqlx::query_as(
+        "SELECT ft.id, ft.receta_id, r.nombre AS receta_nombre, ft.pasos_preparacion, CAST(ft.fotos AS CHAR) AS fotos, ft.notas_adicionales FROM fichas_tecnicas ft INNER JOIN recetas r ON ft.receta_id = r.id WHERE ft.receta_id = ?"
+    ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    Ok(row)
+}
+
+#[tauri::command]
+async fn create_ficha_tecnica(input: FichaTecnicaInput) -> Result<i64, String> {
+    let pool = db::get_pool();
+    let result = sqlx::query("INSERT INTO fichas_tecnicas (receta_id, pasos_preparacion, fotos, notas_adicionales) VALUES (?, ?, ?, ?)")
+        .bind(input.receta_id).bind(&input.pasos_preparacion).bind(&input.fotos).bind(&input.notas_adicionales)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn update_ficha_tecnica(id: i64, input: FichaTecnicaInput) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("UPDATE fichas_tecnicas SET pasos_preparacion = ?, fotos = ?, notas_adicionales = ? WHERE id = ?")
+        .bind(&input.pasos_preparacion).bind(&input.fotos).bind(&input.notas_adicionales).bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_ficha_tecnica(id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM fichas_tecnicas WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ========================================
+// VENTAS
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Venta {
+    pub id: i64,
+    pub fecha: String,
+    pub plato_nombre: String,
+    pub cantidad: i64,
+    pub precio_unitario: f64,
+    pub total_venta: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VentaInput {
+    pub fecha: String,
+    pub plato_nombre: String,
+    pub cantidad: i64,
+    pub precio_unitario: f64,
+    pub total_venta: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VentaCSVRow {
+    pub fecha: String,
+    pub plato_nombre: String,
+    pub cantidad: i64,
+    pub precio_unitario: f64,
+    pub total_venta: f64,
+}
+
+#[tauri::command]
+async fn get_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<Venta>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<Venta> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, plato_nombre, cantidad, CAST(precio_unitario AS DOUBLE) AS precio_unitario, CAST(total_venta AS DOUBLE) AS total_venta FROM ventas WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, plato_nombre")
+            .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, plato_nombre, cantidad, CAST(precio_unitario AS DOUBLE) AS precio_unitario, CAST(total_venta AS DOUBLE) AS total_venta FROM ventas ORDER BY fecha DESC, plato_nombre")
+            .fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn import_ventas(rows: Vec<VentaCSVRow>) -> Result<i64, String> {
+    let pool = db::get_pool();
+    let mut count: i64 = 0;
+    for row in rows {
+        sqlx::query("INSERT INTO ventas (fecha, plato_nombre, cantidad, precio_unitario, total_venta) VALUES (?, ?, ?, ?, ?)")
+            .bind(&row.fecha).bind(&row.plato_nombre).bind(row.cantidad).bind(row.precio_unitario).bind(row.total_venta)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        count += 1;
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+async fn delete_venta(id: i64) -> Result<(), String> {
+    let pool = db::get_pool();
+    sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct VentaPorPlato {
+    pub plato_nombre: String,
+    pub unidades_vendidas: i64,
+    pub total_ingresos: f64,
+}
+
+#[tauri::command]
+async fn get_ventas_por_plato(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<VentaPorPlato>, String> {
+    let pool = db::get_pool();
+    let rows: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+            .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+            .fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+// ========================================
+// MENU ENGINEERING (BCG Matrix)
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MenuEngineeringItem {
+    pub plato_nombre: String,
+    pub receta_id: Option<i64>,
+    pub unidades_vendidas: i64,
+    pub margen_porcentaje: f64,
+    pub margen_euros: f64,
+    pub coste_porcion: f64,
+    pub precio_venta: f64,
+    pub categoria: String,
+}
+
+#[tauri::command]
+async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<MenuEngineeringItem>, String> {
+    let pool = db::get_pool();
+
+    // Get sales per dish
+    let ventas: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre")
+            .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas GROUP BY plato_nombre")
+            .fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+
+    if ventas.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Calculate median of units sold for BCG cutoff
+    let mut units: Vec<i64> = ventas.iter().map(|v| v.unidades_vendidas).collect();
+    units.sort();
+    let median_units = units[units.len() / 2] as f64;
+
+    // Try to match each dish to a receta to get margin info
+    let mut items: Vec<MenuEngineeringItem> = Vec::new();
+    for v in &ventas {
+        // Try to find matching receta
+        let receta: Option<(i64, f64, f64, f64)> = sqlx::query_as(
+            "SELECT r.id, CAST(r.precio_venta AS DOUBLE), COALESCE(r.margen_porcentaje, 50.0), 0.0 FROM recetas r WHERE r.nombre = ? LIMIT 1"
+        ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+        let (receta_id, precio_venta, margen_porcentaje, _coste) = receta.unwrap_or((0, 0.0, 50.0, 0.0));
+
+        // Calculate cost from receta if available
+        let coste_porcion: f64 = if receta_id > 0 {
+            let coste_result: Option<(f64,)> = sqlx::query_as(
+                "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / r.porciones AS DOUBLE) AS coste_porcion FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE ri.receta_id = ?"
+            ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+            coste_result.map(|c| c.0).unwrap_or(0.0)
+        } else {
+            0.0
+        };
+
+        let margen_euros = if precio_venta > 0.0 { precio_venta - coste_porcion } else { 0.0 };
+        let margen_real = if precio_venta > 0.0 { ((precio_venta - coste_porcion) / precio_venta) * 100.0 } else { margen_porcentaje };
+
+        // BCG classification
+        let popularidad_alta = (v.unidades_vendidas as f64) >= median_units;
+        let margen_alto = margen_real >= 30.0; // 30% threshold
+
+        let categoria = match (popularidad_alta, margen_alto) {
+            (true, true) => "estrella",
+            (true, false) => "vaca",
+            (false, true) => "enigma",
+            (false, false) => "perro",
+        };
+
+        items.push(MenuEngineeringItem {
+            plato_nombre: v.plato_nombre.clone(),
+            receta_id: if receta_id > 0 { Some(receta_id) } else { None },
+            unidades_vendidas: v.unidades_vendidas,
+            margen_porcentaje: margen_real,
+            margen_euros,
+            coste_porcion,
+            precio_venta,
+            categoria: categoria.to_string(),
+        });
+    }
+
+    Ok(items)
+}
+
+// ========================================
+// CONTABILIDAD
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DesglosePlato {
+    pub plato_nombre: String,
+    pub ingresos: f64,
+    pub costes: f64,
+    pub margen_bruto: f64,
+    pub margen_porcentaje: f64,
+    pub unidades_vendidas: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ContabilidadData {
+    pub total_ingresos: f64,
+    pub total_costes_cogs: f64,
+    pub margen_bruto_euros: f64,
+    pub margen_bruto_porcentaje: f64,
+    pub beneficio_bruto: f64,
+    pub beneficio_neto: f64,
+    pub num_platos_vendidos: i64,
+    pub ticket_medio: f64,
+    pub desglose_por_plato: Vec<DesglosePlato>,
+}
+
+#[tauri::command]
+async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<ContabilidadData, String> {
+    let pool = db::get_pool();
+
+    let ventas_por_plato: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+            .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+            .fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+
+    let total_tickets: (i64,) = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT COUNT(DISTINCT fecha) FROM ventas WHERE fecha BETWEEN ? AND ?")
+            .bind(desde).bind(hasta).fetch_one(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT COUNT(DISTINCT fecha) FROM ventas")
+            .fetch_one(pool).await.map_err(|e| e.to_string())?
+    };
+
+    let mut total_ingresos: f64 = 0.0;
+    let mut total_costes: f64 = 0.0;
+    let mut total_unidades: i64 = 0;
+    let mut desglose: Vec<DesglosePlato> = Vec::new();
+
+    for v in &ventas_por_plato {
+        total_ingresos += v.total_ingresos;
+        total_unidades += v.unidades_vendidas;
+
+        // Try to get cost from receta
+        let coste_result: Option<(f64,)> = sqlx::query_as(
+            "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / r.porciones AS DOUBLE) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = ?"
+        ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+        let coste_porcion = coste_result.map(|t| t.0).unwrap_or(0.0);
+        let coste_total_plato = coste_porcion * v.unidades_vendidas as f64;
+        total_costes += coste_total_plato;
+
+        let margen = v.total_ingresos - coste_total_plato;
+        let margen_pct = if v.total_ingresos > 0.0 { (margen / v.total_ingresos) * 100.0 } else { 0.0 };
+
+        desglose.push(DesglosePlato {
+            plato_nombre: v.plato_nombre.clone(),
+            ingresos: v.total_ingresos,
+            costes: coste_total_plato,
+            margen_bruto: margen,
+            margen_porcentaje: margen_pct,
+            unidades_vendidas: v.unidades_vendidas,
+        });
+    }
+
+    let margen_bruto = total_ingresos - total_costes;
+    let margen_bruto_pct = if total_ingresos > 0.0 { (margen_bruto / total_ingresos) * 100.0 } else { 0.0 };
+    let ticket_medio = if total_tickets.0 > 0 { total_ingresos / total_tickets.0 as f64 } else { 0.0 };
+
+    Ok(ContabilidadData {
+        total_ingresos,
+        total_costes_cogs: total_costes,
+        margen_bruto_euros: margen_bruto,
+        margen_bruto_porcentaje: margen_bruto_pct,
+        beneficio_bruto: margen_bruto,
+        beneficio_neto: margen_bruto,
+        num_platos_vendidos: total_unidades,
+        ticket_medio,
+        desglose_por_plato: desglose,
+    })
 }
 
 // ========================================
@@ -1502,6 +1853,17 @@ pub fn run() {
             add_receta_guarnicion,
             delete_receta_guarnicion,
             get_guarnicion_coste,
+            get_fichas_tecnicas,
+            get_ficha_tecnica,
+            create_ficha_tecnica,
+            update_ficha_tecnica,
+            delete_ficha_tecnica,
+            get_ventas,
+            import_ventas,
+            delete_venta,
+            get_ventas_por_plato,
+            get_menu_engineering,
+            get_contabilidad,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

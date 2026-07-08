@@ -369,3 +369,133 @@ export async function exportAlbaranPDF(albaran: {
     await writeFile(path, new Uint8Array(pdfBytes));
   }
 }
+
+// ========================================
+// FICHA TECNICA PDF (sin costes)
+// ========================================
+
+interface FichaTecnicaData {
+  receta_nombre: string;
+  descripcion: string | null;
+  categoria: string | null;
+  porciones: number;
+  tiempo_preparacion: number | null;
+  ingredientes: { ingrediente_nombre: string; cantidad: number; unidad: string; }[];
+  alergenos: string[];
+  pasos_preparacion: string | null;
+  fotos: string[] | null;
+  notas_adicionales: string | null;
+}
+
+export async function exportFichaTecnicaPDF(ficha: FichaTecnicaData) {
+  const doc = new jsPDF();
+
+  doc.setFontSize(20);
+  doc.text(ficha.receta_nombre, 14, 22);
+
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  let y = 30;
+  if (ficha.descripcion) {
+    doc.text(ficha.descripcion, 14, y);
+    y += 8;
+  }
+
+  doc.setTextColor(0);
+  doc.setFontSize(11);
+  doc.text(`Porciones: ${ficha.porciones}`, 14, y);
+  if (ficha.tiempo_preparacion) {
+    doc.text(`Tiempo: ${ficha.tiempo_preparacion} min`, 80, y);
+  }
+  if (ficha.categoria) {
+    doc.text(`Categoría: ${ficha.categoria}`, 140, y);
+  }
+  y += 10;
+
+  if (ficha.alergenos.length > 0) {
+    doc.setFontSize(11);
+    doc.text(`Alérgenos: ${ficha.alergenos.join(", ")}`, 14, y);
+    y += 10;
+  }
+
+  // Ingredientes (sin costes)
+  doc.setFontSize(14);
+  doc.text("Ingredientes", 14, y);
+  y += 4;
+
+  const ingData = ficha.ingredientes.map((ing) => [
+    ing.ingrediente_nombre,
+    `${ing.cantidad} ${ing.unidad}`,
+  ]);
+
+  autoTable(doc, {
+    startY: y,
+    head: [["Ingrediente", "Cantidad"]],
+    body: ingData,
+    theme: "striped",
+    styles: { fontSize: 9 },
+  });
+
+  // @ts-ignore
+  y = doc.lastAutoTable.finalY + 10;
+
+  // Pasos de preparación
+  if (ficha.pasos_preparacion) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.text("Pasos de preparación", 14, y);
+    y += 6;
+
+    doc.setFontSize(10);
+    doc.setTextColor(0);
+    const lineas = ficha.pasos_preparacion.split("\n");
+    for (const linea of lineas) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(linea, 14, y);
+      y += 5;
+    }
+    y += 5;
+  }
+
+  // Fotos (solo URLs)
+  if (ficha.fotos && ficha.fotos.length > 0) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.text("Fotos", 14, y);
+    y += 6;
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    for (const foto of ficha.fotos) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(foto, 14, y);
+      y += 5;
+    }
+    y += 5;
+  }
+
+  // Notas
+  if (ficha.notas_adicionales) {
+    if (y > 250) { doc.addPage(); y = 20; }
+    doc.setFontSize(14);
+    doc.setTextColor(0);
+    doc.text("Notas", 14, y);
+    y += 6;
+    doc.setFontSize(10);
+    const lineas = ficha.notas_adicionales.split("\n");
+    for (const linea of lineas) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(linea, 14, y);
+      y += 5;
+    }
+  }
+
+  const fileName = `ficha_${ficha.receta_nombre.replace(/\s+/g, "_")}.pdf`;
+  const path = await save({
+    defaultPath: fileName,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (path) {
+    const pdfBytes = doc.output("arraybuffer");
+    await writeFile(path, new Uint8Array(pdfBytes));
+  }
+}

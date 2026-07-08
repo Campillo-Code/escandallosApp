@@ -5,6 +5,7 @@ import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft, CheckCircle, FileText } from "lucide-react";
 import { exportAlbaranPDF } from "../lib/exports";
+import DateInput from "../components/DateInput";
 
 const albaranSchema = z.object({
   proveedor_id: z.string().min(1, "Selecciona un proveedor"),
@@ -73,11 +74,15 @@ export default function Albaranes() {
     register,
     handleSubmit,
     reset,
+    watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<AlbaranFormData>({
     resolver: zodResolver(albaranSchema),
     defaultValues: { fecha_recepcion: new Date().toISOString().split("T")[0] },
   });
+
+  const fechaRecepcion = watch("fecha_recepcion");
 
   const {
     register: registerDetalle,
@@ -485,13 +490,10 @@ export default function Albaranes() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Recepción (AAAA-MM-DD) *</label>
-              <input
-                type="text"
-                placeholder="2025-01-15"
-                pattern="\d{4}-\d{2}-\d{2}"
-                {...register("fecha_recepcion")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              <DateInput
+                value={fechaRecepcion}
+                onChange={(val) => setValue("fecha_recepcion", val)}
+                label="Fecha Recepción *"
               />
               {errors.fecha_recepcion && <p className="text-red-500 text-sm mt-1">{errors.fecha_recepcion.message}</p>}
             </div>

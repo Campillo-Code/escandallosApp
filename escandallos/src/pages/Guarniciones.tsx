@@ -8,6 +8,9 @@ import { Pencil, Trash2, Plus, X, ChevronLeft } from "lucide-react";
 const guarnicionSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
   descripcion: z.string().optional(),
+  porciones: z.string().min(1, "Mínimo 1 porción"),
+  margen_porcentaje: z.string().optional(),
+  precio_venta: z.string().optional(),
 });
 type GuarnicionFormData = z.infer<typeof guarnicionSchema>;
 
@@ -19,14 +22,14 @@ const ingredienteSchema = z.object({
 });
 type IngredienteFormData = z.infer<typeof ingredienteSchema>;
 
-interface Guarnicion { id: number; nombre: string; descripcion: string | null; }
+interface Guarnicion { id: number; nombre: string; descripcion: string | null; porciones: number; margen_porcentaje: number; precio_venta: number | null; }
 interface Ingrediente { id: number; nombre: string; unidad_base: string; }
 interface GuarnicionIngrediente {
   id: number; guarnicion_id: number; ingrediente_id: number;
   ingrediente_nombre: string | null; cantidad: number; unidad: string; merma_porcentaje: number;
 }
 interface CosteGuarnicion {
-  nombre: string; coste_total: number;
+  nombre: string; coste_total: number; porciones: number; coste_porcion: number; margen_porcentaje: number; precio_venta: number | null; precio_venta_sugerido: number;
   ingredientes: { ingrediente_nombre: string; cantidad: number; unidad: string; precio_unitario: number | null; precio_por_unidad_receta: number | null; merma_porcentaje: number; coste: number; }[];
 }
 
@@ -54,7 +57,7 @@ export default function Guarniciones() {
 
   const onSubmit = async (data: GuarnicionFormData) => {
     try {
-      const input = { nombre: data.nombre, descripcion: data.descripcion || null };
+      const input = { nombre: data.nombre, descripcion: data.descripcion || null, porciones: data.porciones ? parseInt(data.porciones) : null, margen_porcentaje: data.margen_porcentaje ? parseFloat(data.margen_porcentaje) : null, precio_venta: data.precio_venta ? parseFloat(data.precio_venta) : null };
       if (editingId) await invoke("update_guarnicion", { id: editingId, input });
       else await invoke("create_guarnicion", { input });
       setShowForm(false); setEditingId(null); reset(); loadGuarniciones();
@@ -71,7 +74,7 @@ export default function Guarniciones() {
     } catch (e) { alert("Error: " + e); }
   };
 
-  const handleEdit = (g: Guarnicion) => { setEditingId(g.id); reset({ nombre: g.nombre, descripcion: g.descripcion ?? "" }); setShowForm(true); };
+  const handleEdit = (g: Guarnicion) => { setEditingId(g.id); reset({ nombre: g.nombre, descripcion: g.descripcion ?? "", porciones: String(g.porciones ?? 1), margen_porcentaje: String(g.margen_porcentaje ?? 30), precio_venta: g.precio_venta != null ? String(g.precio_venta) : "" }); setShowForm(true); };
   const handleDelete = async (id: number) => {
     if (!confirm("¿Eliminar guarnición?")) return;
     try { await invoke("delete_guarnicion", { id }); if (selectedGuarnicion?.id === id) { setSelectedGuarnicion(null); setGuarnIngredientes([]); setCoste(null); } loadGuarniciones(); } catch (e) { alert("Error: " + e); }
@@ -167,7 +170,15 @@ export default function Guarniciones() {
         {coste && (
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
-              <h3 className="text-lg font-semibold">Escandallo — Coste total: {coste.coste_total.toFixed(2)} €</h3>
+              <h3 className="text-lg font-semibold">Escandallo — Coste total: {coste.coste_total.toFixed(2)} € ({coste.porciones} porciones)</h3>
+              <div className="flex gap-4 mt-2 text-sm">
+                <span className="text-gray-600">Coste/porción: <span className="font-medium">{coste.coste_porcion.toFixed(2)} €</span></span>
+                <span className="text-gray-600">Margen: <span className="font-medium">{coste.margen_porcentaje.toFixed(1)}%</span></span>
+                {coste.precio_venta != null && (
+                  <span className="text-gray-600">Precio venta: <span className="font-medium">{coste.precio_venta.toFixed(2)} €</span></span>
+                )}
+                <span className="text-blue-600 font-medium">Precio sugerido: {coste.precio_venta_sugerido.toFixed(2)} €</span>
+              </div>
             </div>
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
@@ -231,6 +242,19 @@ export default function Guarniciones() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
               <input {...register("descripcion")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Porciones *</label>
+              <input type="number" min="1" {...register("porciones")} placeholder="10" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              {errors.porciones && <p className="text-red-500 text-sm mt-1">{errors.porciones.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Margen %</label>
+              <input type="number" step="0.01" min="0" max="99" {...register("margen_porcentaje")} placeholder="30" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta (€)</label>
+              <input type="number" step="0.01" min="0" {...register("precio_venta")} placeholder="Opcional" className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
             </div>
             <div className="md:col-span-2 flex gap-3 justify-end">
               <button type="button" onClick={() => { setShowForm(false); setEditingId(null); reset(); }} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
