@@ -2,6 +2,7 @@ mod db;
 
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use tauri::Manager;
 
 // ========================================
 // MODELOS
@@ -78,7 +79,7 @@ pub struct RecetaInput {
 
 #[tauri::command]
 async fn get_proveedores() -> Result<Vec<Proveedor>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Proveedor> = sqlx::query_as("SELECT id, nombre, contacto, telefono, email, direccion, notas FROM proveedores ORDER BY nombre")
         .fetch_all(pool)
         .await
@@ -88,7 +89,7 @@ async fn get_proveedores() -> Result<Vec<Proveedor>, String> {
 
 #[tauri::command]
 async fn create_proveedor(input: ProveedorInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO proveedores (nombre, contacto, telefono, email, direccion, notas) VALUES (?, ?, ?, ?, ?, ?)"
     )
@@ -106,7 +107,7 @@ async fn create_proveedor(input: ProveedorInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn update_proveedor(id: i64, input: ProveedorInput) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query(
         "UPDATE proveedores SET nombre = ?, contacto = ?, telefono = ?, email = ?, direccion = ?, notas = ? WHERE id = ?"
     )
@@ -125,7 +126,7 @@ async fn update_proveedor(id: i64, input: ProveedorInput) -> Result<(), String> 
 
 #[tauri::command]
 async fn delete_proveedor(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM proveedores WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -140,7 +141,7 @@ async fn delete_proveedor(id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_ingredientes() -> Result<Vec<Ingrediente>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Ingrediente> = sqlx::query_as(
         "SELECT i.id, i.nombre, i.unidad_base, i.categoria, i.alergenos, CAST(ip.precio_por_unidad_base AS DOUBLE) AS precio, p.nombre AS proveedor_nombre FROM ingredientes i LEFT JOIN ingrediente_precios ip ON i.id = ip.ingrediente_id AND ip.es_predeterminado = 1 LEFT JOIN proveedores p ON ip.proveedor_id = p.id ORDER BY i.nombre"
     )
@@ -152,7 +153,7 @@ async fn get_ingredientes() -> Result<Vec<Ingrediente>, String> {
 
 #[tauri::command]
 async fn create_ingrediente(input: IngredienteInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO ingredientes (nombre, unidad_base, categoria, alergenos) VALUES (?, ?, ?, ?)"
     )
@@ -168,7 +169,7 @@ async fn create_ingrediente(input: IngredienteInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn update_ingrediente(id: i64, input: IngredienteInput) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query(
         "UPDATE ingredientes SET nombre = ?, unidad_base = ?, categoria = ?, alergenos = ? WHERE id = ?"
     )
@@ -185,7 +186,7 @@ async fn update_ingrediente(id: i64, input: IngredienteInput) -> Result<(), Stri
 
 #[tauri::command]
 async fn delete_ingrediente(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM ingredientes WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -200,7 +201,7 @@ async fn delete_ingrediente(id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_recetas() -> Result<Vec<Receta>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Receta> = sqlx::query_as("SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas ORDER BY nombre")
         .fetch_all(pool)
         .await
@@ -210,7 +211,7 @@ async fn get_recetas() -> Result<Vec<Receta>, String> {
 
 #[tauri::command]
 async fn create_receta(input: RecetaInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO recetas (nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, precio_venta, margen_porcentaje) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
@@ -230,7 +231,7 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query(
         "UPDATE recetas SET nombre = ?, descripcion = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, margen_porcentaje = ? WHERE id = ?"
     )
@@ -251,7 +252,7 @@ async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
 
 #[tauri::command]
 async fn delete_receta(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM recetas WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -284,6 +285,7 @@ pub struct RecetaIngredienteConNombre {
     pub ingrediente_id: Option<i64>,
     pub ingrediente_nombre: Option<String>,
     pub sub_receta_id: Option<i64>,
+    pub sub_receta_nombre: Option<String>,
     pub cantidad: f64,
     pub unidad: String,
     pub merma_porcentaje: f64,
@@ -305,9 +307,9 @@ pub struct RecetaIngredienteInput {
 
 #[tauri::command]
 async fn get_receta_ingredientes(receta_id: i64) -> Result<Vec<RecetaIngredienteConNombre>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<RecetaIngredienteConNombre> = sqlx::query_as(
-        "SELECT ri.id, ri.receta_id, ri.ingrediente_id, i.nombre AS ingrediente_nombre, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje, ri.notas, ri.orden FROM receta_ingredientes ri LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE ri.receta_id = ? ORDER BY ri.orden"
+        "SELECT ri.id, ri.receta_id, ri.ingrediente_id, i.nombre AS ingrediente_nombre, ri.sub_receta_id, sr.nombre AS sub_receta_nombre, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje, ri.notas, ri.orden FROM receta_ingredientes ri LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id LEFT JOIN recetas sr ON ri.sub_receta_id = sr.id WHERE ri.receta_id = ? ORDER BY ri.orden"
     )
     .bind(receta_id)
     .fetch_all(pool)
@@ -318,7 +320,7 @@ async fn get_receta_ingredientes(receta_id: i64) -> Result<Vec<RecetaIngrediente
 
 #[tauri::command]
 async fn add_receta_ingrediente(input: RecetaIngredienteInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO receta_ingredientes (receta_id, ingrediente_id, sub_receta_id, cantidad, unidad, merma_porcentaje, notas, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
@@ -338,7 +340,7 @@ async fn add_receta_ingrediente(input: RecetaIngredienteInput) -> Result<i64, St
 
 #[tauri::command]
 async fn delete_receta_ingrediente(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM receta_ingredientes WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -348,12 +350,24 @@ async fn delete_receta_ingrediente(id: i64) -> Result<(), String> {
 }
 
 // ========================================
+// RECETAS BASE (es_base = true)
+// ========================================
+
+#[tauri::command]
+async fn get_recetas_base() -> Result<Vec<Receta>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<Receta> = sqlx::query_as("SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas WHERE es_base = 1 ORDER BY nombre")
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+// ========================================
 // ALERGENOS DE RECETA
 // ========================================
 
 #[tauri::command]
 async fn get_receta_alergenos(receta_id: i64) -> Result<Vec<String>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<(Option<String>,)> = sqlx::query_as(
         "SELECT DISTINCT i.alergenos FROM receta_ingredientes ri INNER JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE ri.receta_id = ? AND i.alergenos IS NOT NULL AND i.alergenos != '' AND i.alergenos != '[]'"
     )
@@ -407,7 +421,7 @@ pub struct CosteReceta {
 
 #[tauri::command]
 async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
 
     let receta: Receta = sqlx::query_as(
         "SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas WHERE id = ?"
@@ -418,8 +432,9 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
     .map_err(|e| e.to_string())?
     .ok_or("Receta no encontrada".to_string())?;
 
-    let rows: Vec<(i64, Option<i64>, String, f64, String, f64, String)> = sqlx::query_as(
-        "SELECT ri.ingrediente_id, ri.ingrediente_id, i.nombre, CAST(ri.cantidad AS DOUBLE), ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE), i.unidad_base FROM receta_ingredientes ri INNER JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE ri.receta_id = ?"
+    // Fetch ALL receta_ingredientes (regular ingredients + sub-recipes)
+    let all_ri: Vec<(i64, Option<i64>, Option<i64>, f64, String, f64)> = sqlx::query_as(
+        "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE), ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) FROM receta_ingredientes ri WHERE ri.receta_id = ?"
     )
     .bind(receta_id)
     .fetch_all(pool)
@@ -429,64 +444,81 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
     let mut ingredientes: Vec<CosteIngrediente> = Vec::new();
     let mut coste_total: f64 = 0.0;
 
-    for row in rows {
-        let ingrediente_id = row.0;
-        let nombre = row.2;
-        let cantidad = row.3;
-        let unidad = row.4;
-        let merma = row.5;
-        let unidad_base = row.6;
+    for ri in all_ri {
+        let ingrediente_id = ri.1;
+        let sub_receta_id = ri.2;
+        let cantidad = ri.3;
+        let unidad = ri.4;
+        let merma = ri.5;
 
-        let precio_row: Option<(f64,)> = sqlx::query_as(
-            "SELECT CAST(precio_por_unidad_base AS DOUBLE) FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1"
-        )
-        .bind(ingrediente_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+        if let Some(sub_rid) = sub_receta_id {
+            // Sub-recipe: first get name and porciones
+            let sub_info: Option<(String, f64)> = sqlx::query_as("SELECT nombre, CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?")
+                .bind(sub_rid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
-        let precio_unitario = precio_row.map(|r| r.0);
+            if let Some((sub_nombre, sub_porciones)) = sub_info {
+                // Get cost of all ingredients in the sub-recipe
+                let sub_coste_opt: Option<(f64,)> = sqlx::query_as(
+                    "SELECT CAST(SUM(ri2.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri2.merma_porcentaje / 100)) AS DOUBLE) FROM receta_ingredientes ri2 LEFT JOIN ingrediente_precios ip ON ri2.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 WHERE ri2.receta_id = ?"
+                )
+                .bind(sub_rid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
-        // Convert quantity to base unit
-        let cantidad_base = if unidad == unidad_base {
-            cantidad
-        } else if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") {
-            cantidad * 1000.0
-        } else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") {
-            cantidad / 1000.0
-        } else {
-            cantidad
-        };
-
-        let coste = if let Some(pu) = precio_unitario {
-            let coste_base = cantidad_base * pu;
-            coste_base * (1.0 + merma / 100.0)
-        } else {
-            0.0
-        };
-
-        coste_total += coste;
-
-        // Calculate price per recipe unit (not base unit)
-        let precio_por_unidad_receta = precio_unitario.map(|pu| {
-            if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") {
-                pu * 1000.0
-            } else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") {
-                pu / 1000.0
-            } else {
-                pu
+                let sub_coste_total = sub_coste_opt.map(|r| r.0).unwrap_or(0.0);
+                let prop_coste = if sub_porciones > 0.0 {
+                    (cantidad / sub_porciones) * sub_coste_total * (1.0 + merma / 100.0)
+                } else {
+                    0.0
+                };
+                coste_total += prop_coste;
+                ingredientes.push(CosteIngrediente {
+                    ingrediente_nombre: sub_nombre,
+                    cantidad,
+                    unidad,
+                    merma_porcentaje: merma,
+                    precio_unitario: None,
+                    precio_por_unidad_receta: None,
+                    coste: prop_coste,
+                });
             }
-        });
+        } else if let Some(iid) = ingrediente_id {
+            // Regular ingredient
+            let ing_row: Option<(String, String)> = sqlx::query_as("SELECT nombre, unidad_base FROM ingredientes WHERE id = ?")
+                .bind(iid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+            let (nombre, unidad_base) = match ing_row {
+                Some(r) => (r.0, r.1),
+                None => continue,
+            };
 
-        ingredientes.push(CosteIngrediente {
-            ingrediente_nombre: nombre,
-            cantidad,
-            unidad,
-            merma_porcentaje: merma,
-            precio_unitario,
-            precio_por_unidad_receta,
-            coste,
-        });
+            let precio_row: Option<(f64,)> = sqlx::query_as(
+                "SELECT CAST(precio_por_unidad_base AS DOUBLE) FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1"
+            )
+            .bind(iid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+            let precio_unitario = precio_row.map(|r| r.0);
+
+            let cantidad_base = if unidad == unidad_base { cantidad }
+            else if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { cantidad * 1000.0 }
+            else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { cantidad / 1000.0 }
+            else { cantidad };
+
+            let coste = if let Some(pu) = precio_unitario {
+                cantidad_base * pu * (1.0 + merma / 100.0)
+            } else { 0.0 };
+
+            coste_total += coste;
+
+            let precio_por_unidad_receta = precio_unitario.map(|pu| {
+                if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { pu * 1000.0 }
+                else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { pu / 1000.0 }
+                else { pu }
+            });
+
+            ingredientes.push(CosteIngrediente {
+                ingrediente_nombre: nombre,
+                cantidad, unidad, merma_porcentaje: merma,
+                precio_unitario, precio_por_unidad_receta, coste,
+            });
+        }
     }
 
     let porciones = receta.porciones as f64;
@@ -563,7 +595,7 @@ pub struct MenuRecetaInput {
 
 #[tauri::command]
 async fn get_menus() -> Result<Vec<Menu>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Menu> = sqlx::query_as("SELECT id, nombre, descripcion, tipo, activo FROM menus ORDER BY nombre")
         .fetch_all(pool)
         .await
@@ -573,7 +605,7 @@ async fn get_menus() -> Result<Vec<Menu>, String> {
 
 #[tauri::command]
 async fn create_menu(input: MenuInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO menus (nombre, descripcion, tipo, activo) VALUES (?, ?, ?, ?)"
     )
@@ -589,7 +621,7 @@ async fn create_menu(input: MenuInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn update_menu(id: i64, input: MenuInput) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query(
         "UPDATE menus SET nombre = ?, descripcion = ?, tipo = ?, activo = ? WHERE id = ?"
     )
@@ -606,7 +638,7 @@ async fn update_menu(id: i64, input: MenuInput) -> Result<(), String> {
 
 #[tauri::command]
 async fn delete_menu(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM menus WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -617,7 +649,7 @@ async fn delete_menu(id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_menu_recetas(menu_id: i64) -> Result<Vec<MenuReceta>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<MenuReceta> = sqlx::query_as(
         "SELECT mr.id, mr.menu_id, mr.receta_id, r.nombre AS receta_nombre, CAST(mr.precio_venta AS DOUBLE) AS precio_venta, mr.orden FROM menu_recetas mr INNER JOIN recetas r ON mr.receta_id = r.id WHERE mr.menu_id = ? ORDER BY mr.orden"
     )
@@ -630,7 +662,7 @@ async fn get_menu_recetas(menu_id: i64) -> Result<Vec<MenuReceta>, String> {
 
 #[tauri::command]
 async fn add_menu_receta(input: MenuRecetaInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO menu_recetas (menu_id, receta_id, precio_venta, orden) VALUES (?, ?, ?, ?)"
     )
@@ -646,7 +678,7 @@ async fn add_menu_receta(input: MenuRecetaInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn delete_menu_receta(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM menu_recetas WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -657,7 +689,7 @@ async fn delete_menu_receta(id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_menu_alergenos(menu_id: i64) -> Result<Vec<String>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<(Option<String>,)> = sqlx::query_as(
         "SELECT DISTINCT i.alergenos FROM menu_recetas mr INNER JOIN receta_ingredientes ri ON mr.receta_id = ri.receta_id INNER JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE mr.menu_id = ? AND i.alergenos IS NOT NULL AND i.alergenos != '' AND i.alergenos != '[]'"
     )
@@ -733,7 +765,7 @@ pub struct AlbaranDetalleInput {
 
 #[tauri::command]
 async fn get_albaranes() -> Result<Vec<Albaran>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Albaran> = sqlx::query_as(
         "SELECT a.id, a.proveedor_id, p.nombre AS proveedor_nombre, a.numero_albaran, DATE_FORMAT(a.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, CAST(a.total AS DOUBLE) AS total, a.notas, a.procesado FROM albaranes a INNER JOIN proveedores p ON a.proveedor_id = p.id ORDER BY a.fecha_recepcion DESC"
     )
@@ -745,7 +777,7 @@ async fn get_albaranes() -> Result<Vec<Albaran>, String> {
 
 #[tauri::command]
 async fn get_albaran(id: i64) -> Result<Albaran, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let row: Albaran = sqlx::query_as(
         "SELECT a.id, a.proveedor_id, p.nombre AS proveedor_nombre, a.numero_albaran, DATE_FORMAT(a.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, CAST(a.total AS DOUBLE) AS total, a.notas, a.procesado FROM albaranes a INNER JOIN proveedores p ON a.proveedor_id = p.id WHERE a.id = ?"
     )
@@ -759,7 +791,7 @@ async fn get_albaran(id: i64) -> Result<Albaran, String> {
 
 #[tauri::command]
 async fn create_albaran(input: AlbaranInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO albaranes (proveedor_id, numero_albaran, fecha_recepcion, total, notas, procesado) VALUES (?, ?, ?, ?, ?, ?)"
     )
@@ -777,7 +809,7 @@ async fn create_albaran(input: AlbaranInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn update_albaran(id: i64, input: AlbaranInput) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query(
         "UPDATE albaranes SET proveedor_id = ?, numero_albaran = ?, fecha_recepcion = ?, total = ?, notas = ?, procesado = ? WHERE id = ?"
     )
@@ -796,7 +828,7 @@ async fn update_albaran(id: i64, input: AlbaranInput) -> Result<(), String> {
 
 #[tauri::command]
 async fn delete_albaran(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM albaranes WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -807,7 +839,7 @@ async fn delete_albaran(id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_albaran_detalles(albaran_id: i64) -> Result<Vec<AlbaranDetalle>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<AlbaranDetalle> = sqlx::query_as(
         "SELECT ad.id, ad.albaran_id, ad.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(ad.cantidad AS DOUBLE) AS cantidad, ad.unidad, CAST(ad.precio_unitario AS DOUBLE) AS precio_unitario, CAST(ad.subtotal AS DOUBLE) AS subtotal, CAST(ad.precio_anterior AS DOUBLE) AS precio_anterior FROM albaranes_detalle ad INNER JOIN ingredientes i ON ad.ingrediente_id = i.id WHERE ad.albaran_id = ? ORDER BY ad.id"
     )
@@ -820,7 +852,7 @@ async fn get_albaran_detalles(albaran_id: i64) -> Result<Vec<AlbaranDetalle>, St
 
 #[tauri::command]
 async fn add_albaran_detalle(input: AlbaranDetalleInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query(
         "INSERT INTO albaranes_detalle (albaran_id, ingrediente_id, cantidad, unidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?, ?)"
     )
@@ -838,7 +870,7 @@ async fn add_albaran_detalle(input: AlbaranDetalleInput) -> Result<i64, String> 
 
 #[tauri::command]
 async fn delete_albaran_detalle(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM albaranes_detalle WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -849,7 +881,7 @@ async fn delete_albaran_detalle(id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
 
     let proveedor_id: i64 = sqlx::query_scalar("SELECT proveedor_id FROM albaranes WHERE id = ?")
         .bind(albaran_id)
@@ -1016,7 +1048,7 @@ pub struct InventarioMovimientoInput {
 
 #[tauri::command]
 async fn get_inventario() -> Result<Vec<Inventario>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Inventario> = sqlx::query_as(
         "SELECT inv.id, inv.ingrediente_id, i.nombre AS ingrediente_nombre, i.unidad_base, CAST(inv.stock_actual AS DOUBLE) AS stock_actual, CAST(inv.stock_minimo AS DOUBLE) AS stock_minimo, inv.unidad, inv.ubicacion FROM inventario inv INNER JOIN ingredientes i ON inv.ingrediente_id = i.id ORDER BY i.nombre"
     )
@@ -1028,7 +1060,7 @@ async fn get_inventario() -> Result<Vec<Inventario>, String> {
 
 #[tauri::command]
 async fn upsert_inventario(input: InventarioInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM inventario WHERE ingrediente_id = ?")
         .bind(input.ingrediente_id)
         .fetch_optional(pool)
@@ -1062,7 +1094,7 @@ async fn upsert_inventario(input: InventarioInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn delete_inventario(ingrediente_id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM inventario WHERE ingrediente_id = ?")
         .bind(ingrediente_id)
         .execute(pool)
@@ -1073,7 +1105,7 @@ async fn delete_inventario(ingrediente_id: i64) -> Result<(), String> {
 
 #[tauri::command]
 async fn get_inventario_movimientos(ingrediente_id: Option<i64>) -> Result<Vec<InventarioMovimiento>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<InventarioMovimiento> = if let Some(iid) = ingrediente_id {
         sqlx::query_as(
             "SELECT m.id, m.ingrediente_id, i.nombre AS ingrediente_nombre, m.tipo, CAST(m.cantidad AS DOUBLE) AS cantidad, m.referencia, m.albaran_id, m.receta_id, m.notas, DATE_FORMAT(m.fecha, '%Y-%m-%d %H:%i') AS fecha FROM inventario_movimientos m INNER JOIN ingredientes i ON m.ingrediente_id = i.id WHERE m.ingrediente_id = ? ORDER BY m.fecha DESC"
@@ -1095,7 +1127,7 @@ async fn get_inventario_movimientos(ingrediente_id: Option<i64>) -> Result<Vec<I
 
 #[tauri::command]
 async fn add_inventario_movimiento(input: InventarioMovimientoInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
 
     // Insert movement
     let result = sqlx::query(
@@ -1141,7 +1173,7 @@ async fn add_inventario_movimiento(input: InventarioMovimientoInput) -> Result<i
 
 #[tauri::command]
 async fn delete_inventario_movimiento(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM inventario_movimientos WHERE id = ?")
         .bind(id)
         .execute(pool)
@@ -1222,7 +1254,7 @@ pub struct CosteGuarnicion {
 // CRUD Guarniciones
 #[tauri::command]
 async fn get_guarniciones() -> Result<Vec<Guarnicion>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Guarnicion> = sqlx::query_as("SELECT id, nombre, descripcion, porciones, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(precio_venta AS DOUBLE) AS precio_venta FROM guarniciones ORDER BY nombre")
         .fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
@@ -1230,7 +1262,7 @@ async fn get_guarniciones() -> Result<Vec<Guarnicion>, String> {
 
 #[tauri::command]
 async fn create_guarnicion(input: GuarnicionInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query("INSERT INTO guarniciones (nombre, descripcion, porciones, margen_porcentaje, precio_venta) VALUES (?, ?, ?, ?, ?)")
         .bind(&input.nombre).bind(&input.descripcion).bind(input.porciones.unwrap_or(1)).bind(input.margen_porcentaje.unwrap_or(30.0)).bind(input.precio_venta)
         .execute(pool).await.map_err(|e| e.to_string())?;
@@ -1239,7 +1271,7 @@ async fn create_guarnicion(input: GuarnicionInput) -> Result<i64, String> {
 
 #[tauri::command]
 async fn update_guarnicion(id: i64, input: GuarnicionInput) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("UPDATE guarniciones SET nombre = ?, descripcion = ?, porciones = ?, margen_porcentaje = ?, precio_venta = ? WHERE id = ?")
         .bind(&input.nombre).bind(&input.descripcion).bind(input.porciones.unwrap_or(1)).bind(input.margen_porcentaje.unwrap_or(30.0)).bind(input.precio_venta).bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
@@ -1248,7 +1280,7 @@ async fn update_guarnicion(id: i64, input: GuarnicionInput) -> Result<(), String
 
 #[tauri::command]
 async fn delete_guarnicion(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM guarniciones WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -1257,7 +1289,7 @@ async fn delete_guarnicion(id: i64) -> Result<(), String> {
 // CRUD Guarnicion Ingredientes
 #[tauri::command]
 async fn get_guarnicion_ingredientes(guarnicion_id: i64) -> Result<Vec<GuarnicionIngrediente>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<GuarnicionIngrediente> = sqlx::query_as(
         "SELECT gi.id, gi.guarnicion_id, gi.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(gi.cantidad AS DOUBLE) AS cantidad, gi.unidad, CAST(gi.merma_porcentaje AS DOUBLE) AS merma_porcentaje FROM guarnicion_ingredientes gi INNER JOIN ingredientes i ON gi.ingrediente_id = i.id WHERE gi.guarnicion_id = ? ORDER BY gi.id"
     ).bind(guarnicion_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
@@ -1266,7 +1298,7 @@ async fn get_guarnicion_ingredientes(guarnicion_id: i64) -> Result<Vec<Guarnicio
 
 #[tauri::command]
 async fn add_guarnicion_ingrediente(input: GuarnicionIngredienteInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query("INSERT INTO guarnicion_ingredientes (guarnicion_id, ingrediente_id, cantidad, unidad, merma_porcentaje) VALUES (?, ?, ?, ?, ?)")
         .bind(input.guarnicion_id).bind(input.ingrediente_id).bind(input.cantidad)
         .bind(&input.unidad).bind(input.merma_porcentaje.unwrap_or(0.0))
@@ -1276,7 +1308,7 @@ async fn add_guarnicion_ingrediente(input: GuarnicionIngredienteInput) -> Result
 
 #[tauri::command]
 async fn delete_guarnicion_ingrediente(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM guarnicion_ingredientes WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -1285,7 +1317,7 @@ async fn delete_guarnicion_ingrediente(id: i64) -> Result<(), String> {
 // CRUD Receta-Guarnicion
 #[tauri::command]
 async fn get_receta_guarniciones(receta_id: i64) -> Result<Vec<RecetaGuarnicion>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<RecetaGuarnicion> = sqlx::query_as(
         "SELECT rg.id, rg.receta_id, rg.guarnicion_id, g.nombre AS guarnicion_nombre FROM receta_guarniciones rg INNER JOIN guarniciones g ON rg.guarnicion_id = g.id WHERE rg.receta_id = ? ORDER BY g.nombre"
     ).bind(receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
@@ -1294,7 +1326,7 @@ async fn get_receta_guarniciones(receta_id: i64) -> Result<Vec<RecetaGuarnicion>
 
 #[tauri::command]
 async fn add_receta_guarnicion(input: RecetaGuarnicionInput) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let result = sqlx::query("INSERT INTO receta_guarniciones (receta_id, guarnicion_id) VALUES (?, ?)")
         .bind(input.receta_id).bind(input.guarnicion_id)
         .execute(pool).await.map_err(|e| e.to_string())?;
@@ -1303,7 +1335,7 @@ async fn add_receta_guarnicion(input: RecetaGuarnicionInput) -> Result<i64, Stri
 
 #[tauri::command]
 async fn delete_receta_guarnicion(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM receta_guarniciones WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -1312,7 +1344,7 @@ async fn delete_receta_guarnicion(id: i64) -> Result<(), String> {
 // Coste de guarnicion
 #[tauri::command]
 async fn get_guarnicion_coste(guarnicion_id: i64) -> Result<CosteGuarnicion, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let guarnicion: Guarnicion = sqlx::query_as("SELECT id, nombre, descripcion, porciones, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(precio_venta AS DOUBLE) AS precio_venta FROM guarniciones WHERE id = ?")
         .bind(guarnicion_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .ok_or("Guarnición no encontrada".to_string())?;
@@ -1382,7 +1414,14 @@ pub struct FichaTecnica {
     pub id: i64,
     pub receta_id: i64,
     pub receta_nombre: Option<String>,
+    pub codigo_interno: Option<String>,
+    pub catalogado_en: Option<String>,
+    pub fecha: Option<String>,
+    pub instrucciones_consumo: Option<String>,
     pub pasos_preparacion: Option<String>,
+    pub conservacion: Option<String>,
+    pub vida_util: Option<String>,
+    pub regeneracion: Option<String>,
     pub fotos: Option<String>,
     pub notas_adicionales: Option<String>,
 }
@@ -1390,50 +1429,57 @@ pub struct FichaTecnica {
 #[derive(Debug, Deserialize)]
 pub struct FichaTecnicaInput {
     pub receta_id: i64,
+    pub codigo_interno: Option<String>,
+    pub catalogado_en: Option<String>,
+    pub fecha: Option<String>,
+    pub instrucciones_consumo: Option<String>,
     pub pasos_preparacion: Option<String>,
+    pub conservacion: Option<String>,
+    pub vida_util: Option<String>,
+    pub regeneracion: Option<String>,
     pub fotos: Option<String>,
     pub notas_adicionales: Option<String>,
 }
 
 #[tauri::command]
 async fn get_fichas_tecnicas() -> Result<Vec<FichaTecnica>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<FichaTecnica> = sqlx::query_as(
-        "SELECT ft.id, ft.receta_id, r.nombre AS receta_nombre, ft.pasos_preparacion, CAST(ft.fotos AS CHAR) AS fotos, ft.notas_adicionales FROM fichas_tecnicas ft INNER JOIN recetas r ON ft.receta_id = r.id ORDER BY r.nombre"
+        "SELECT ft.id, ft.receta_id, r.nombre AS receta_nombre, ft.codigo_interno, ft.catalogado_en, DATE_FORMAT(ft.fecha, '%Y-%m-%d') AS fecha, ft.instrucciones_consumo, ft.pasos_preparacion, ft.conservacion, ft.vida_util, ft.regeneracion, CAST(ft.fotos AS CHAR) AS fotos, ft.notas_adicionales FROM fichas_tecnicas ft INNER JOIN recetas r ON ft.receta_id = r.id ORDER BY r.nombre"
     ).fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
 
 #[tauri::command]
 async fn get_ficha_tecnica(receta_id: i64) -> Result<Option<FichaTecnica>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let row: Option<FichaTecnica> = sqlx::query_as(
-        "SELECT ft.id, ft.receta_id, r.nombre AS receta_nombre, ft.pasos_preparacion, CAST(ft.fotos AS CHAR) AS fotos, ft.notas_adicionales FROM fichas_tecnicas ft INNER JOIN recetas r ON ft.receta_id = r.id WHERE ft.receta_id = ?"
+        "SELECT ft.id, ft.receta_id, r.nombre AS receta_nombre, ft.codigo_interno, ft.catalogado_en, DATE_FORMAT(ft.fecha, '%Y-%m-%d') AS fecha, ft.instrucciones_consumo, ft.pasos_preparacion, ft.conservacion, ft.vida_util, ft.regeneracion, CAST(ft.fotos AS CHAR) AS fotos, ft.notas_adicionales FROM fichas_tecnicas ft INNER JOIN recetas r ON ft.receta_id = r.id WHERE ft.receta_id = ?"
     ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
     Ok(row)
 }
 
 #[tauri::command]
 async fn create_ficha_tecnica(input: FichaTecnicaInput) -> Result<i64, String> {
-    let pool = db::get_pool();
-    let result = sqlx::query("INSERT INTO fichas_tecnicas (receta_id, pasos_preparacion, fotos, notas_adicionales) VALUES (?, ?, ?, ?)")
-        .bind(input.receta_id).bind(&input.pasos_preparacion).bind(&input.fotos).bind(&input.notas_adicionales)
+    let pool = &db::get_pool();
+    let result = sqlx::query("INSERT INTO fichas_tecnicas (receta_id, codigo_interno, catalogado_en, fecha, instrucciones_consumo, pasos_preparacion, conservacion, vida_util, regeneracion, fotos, notas_adicionales) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(input.receta_id).bind(&input.codigo_interno).bind(&input.catalogado_en).bind(&input.fecha).bind(&input.instrucciones_consumo).bind(&input.pasos_preparacion).bind(&input.conservacion).bind(&input.vida_util).bind(&input.regeneracion).bind(&input.fotos).bind(&input.notas_adicionales)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(result.last_insert_id() as i64)
 }
 
 #[tauri::command]
 async fn update_ficha_tecnica(id: i64, input: FichaTecnicaInput) -> Result<(), String> {
-    let pool = db::get_pool();
-    sqlx::query("UPDATE fichas_tecnicas SET pasos_preparacion = ?, fotos = ?, notas_adicionales = ? WHERE id = ?")
-        .bind(&input.pasos_preparacion).bind(&input.fotos).bind(&input.notas_adicionales).bind(id)
+    let pool = &db::get_pool();
+    sqlx::query("UPDATE fichas_tecnicas SET codigo_interno = ?, catalogado_en = ?, fecha = ?, instrucciones_consumo = ?, pasos_preparacion = ?, conservacion = ?, vida_util = ?, regeneracion = ?, fotos = ?, notas_adicionales = ? WHERE id = ?")
+        .bind(&input.codigo_interno).bind(&input.catalogado_en).bind(&input.fecha).bind(&input.instrucciones_consumo).bind(&input.pasos_preparacion).bind(&input.conservacion).bind(&input.vida_util).bind(&input.regeneracion).bind(&input.fotos).bind(&input.notas_adicionales).bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 async fn delete_ficha_tecnica(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM fichas_tecnicas WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -1473,7 +1519,7 @@ pub struct VentaCSVRow {
 
 #[tauri::command]
 async fn get_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<Venta>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<Venta> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
         sqlx::query_as("SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, plato_nombre, cantidad, CAST(precio_unitario AS DOUBLE) AS precio_unitario, CAST(total_venta AS DOUBLE) AS total_venta FROM ventas WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, plato_nombre")
             .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
@@ -1486,7 +1532,7 @@ async fn get_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) ->
 
 #[tauri::command]
 async fn import_ventas(rows: Vec<VentaCSVRow>) -> Result<i64, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let mut count: i64 = 0;
     for row in rows {
         sqlx::query("INSERT INTO ventas (fecha, plato_nombre, cantidad, precio_unitario, total_venta) VALUES (?, ?, ?, ?, ?)")
@@ -1499,7 +1545,7 @@ async fn import_ventas(rows: Vec<VentaCSVRow>) -> Result<i64, String> {
 
 #[tauri::command]
 async fn delete_venta(id: i64) -> Result<(), String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -1514,7 +1560,7 @@ pub struct VentaPorPlato {
 
 #[tauri::command]
 async fn get_ventas_por_plato(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<VentaPorPlato>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
     let rows: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
         sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
             .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
@@ -1543,7 +1589,7 @@ pub struct MenuEngineeringItem {
 
 #[tauri::command]
 async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<MenuEngineeringItem>, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
 
     // Get sales per dish
     let ventas: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
@@ -1641,7 +1687,7 @@ pub struct ContabilidadData {
 
 #[tauri::command]
 async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<ContabilidadData, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
 
     let ventas_por_plato: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
         sqlx::query_as("SELECT plato_nombre, SUM(cantidad) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
@@ -1725,7 +1771,7 @@ pub struct DashboardData {
 
 #[tauri::command]
 async fn get_dashboard_data() -> Result<DashboardData, String> {
-    let pool = db::get_pool();
+    let pool = &db::get_pool();
 
     let total_recetas: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM recetas")
         .fetch_one(pool).await.map_err(|e| e.to_string())?;
@@ -1781,6 +1827,58 @@ async fn get_dashboard_data() -> Result<DashboardData, String> {
 }
 
 // ========================================
+// CONFIGURACION
+// ========================================
+
+#[tauri::command]
+fn get_db_configs() -> Vec<db::DbConfig> {
+    db::get_all_configs()
+}
+
+#[tauri::command]
+fn add_db_config(config: db::DbConfig) -> Vec<db::DbConfig> {
+    db::add_config(config)
+}
+
+#[tauri::command]
+fn update_db_config(config: db::DbConfig) -> Vec<db::DbConfig> {
+    db::update_config(config)
+}
+
+#[tauri::command]
+fn delete_db_config(id: String) -> Vec<db::DbConfig> {
+    db::delete_config(&id)
+}
+
+#[tauri::command]
+fn set_active_db(id: String) -> Vec<db::DbConfig> {
+    db::set_active(&id)
+}
+
+#[tauri::command]
+async fn test_db_connection(config: db::DbConfig) -> Result<String, String> {
+    let url = db::build_url_public(&config);
+    let pool = sqlx::mysql::MySqlPool::connect(&url)
+        .await
+        .map_err(|e| format!("Error de conexión: {}", e))?;
+    // Test with a simple query
+    sqlx::query("SELECT 1")
+        .execute(&pool)
+        .await
+        .map_err(|e| format!("Error en query de prueba: {}", e))?;
+    pool.close().await;
+    Ok("Conexión exitosa".to_string())
+}
+
+#[tauri::command]
+async fn activate_and_switch_db(id: String) -> Result<Vec<db::DbConfig>, String> {
+    let configs = db::set_active(&id);
+    let active = configs.iter().find(|c| c.activa).ok_or("No hay config activa")?;
+    db::switch_db(active).await.map_err(|e| e.to_string())?;
+    Ok(configs)
+}
+
+// ========================================
 // INICIO
 // ========================================
 
@@ -1790,7 +1888,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .setup(|_app| {
+        .setup(|app| {
+            let config_dir = app.path().app_config_dir().expect("Failed to get app config dir");
+            std::fs::create_dir_all(&config_dir).ok();
+            db::init_config_path(config_dir);
             tauri::async_runtime::spawn(async {
                 if let Err(e) = db::init_db().await {
                     eprintln!("Error connecting to database: {}", e);
@@ -1816,6 +1917,7 @@ pub fn run() {
             get_receta_ingredientes,
             add_receta_ingrediente,
             delete_receta_ingrediente,
+            get_recetas_base,
             get_receta_alergenos,
             get_receta_coste,
             get_menus,
@@ -1864,6 +1966,14 @@ pub fn run() {
             get_ventas_por_plato,
             get_menu_engineering,
             get_contabilidad,
+            get_recetas_base,
+            get_db_configs,
+            add_db_config,
+            update_db_config,
+            delete_db_config,
+            set_active_db,
+            test_db_connection,
+            activate_and_switch_db,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

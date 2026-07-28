@@ -38,6 +38,7 @@ interface RecetaIngrediente {
   ingrediente_id: number | null;
   ingrediente_nombre: string | null;
   sub_receta_id: number | null;
+  sub_receta_nombre: string | null;
   cantidad: number;
   unidad: string;
   merma_porcentaje: number;
@@ -97,7 +98,8 @@ interface RecetaGuarnicion {
 }
 
 const ingredienteRecetaSchema = z.object({
-  ingrediente_id: z.string().min(1, "Selecciona un ingrediente"),
+  ingrediente_id: z.string().optional(),
+  sub_receta_id: z.string().optional(),
   cantidad: z.string().min(1, "Cantidad obligatoria"),
   unidad: z.string().min(1, "Unidad obligatoria"),
   merma_porcentaje: z.string(),
@@ -122,6 +124,8 @@ export default function Recetas() {
   const [recetaGuarniciones, setRecetaGuarniciones] = useState<RecetaGuarnicion[]>([]);
   const [costesGuarniciones, setCostesGuarniciones] = useState<CosteGuarnicion[]>([]);
   const [showGuarnForm, setShowGuarnForm] = useState(false);
+  const [recetasBase, setRecetasBase] = useState<Receta[]>([]);
+  const [tipoIngrediente, setTipoIngrediente] = useState<"ingrediente" | "receta">("ingrediente");
 
   const {
     register,
@@ -193,6 +197,7 @@ export default function Recetas() {
   useEffect(() => {
     loadRecetas();
     loadIngredientes();
+    invoke<Receta[]>("get_recetas_base").then(setRecetasBase).catch(console.error);
     invoke<Guarnicion[]>("get_guarniciones").then(setGuarniciones).catch(console.error);
   }, []);
 
@@ -270,24 +275,29 @@ export default function Recetas() {
 
   const onSubmitIngrediente = async (data: IngredienteRecetaFormData) => {
     if (!selectedReceta) return;
+    if (tipoIngrediente === "ingrediente" && !data.ingrediente_id) { alert("Selecciona un ingrediente"); return; }
+    if (tipoIngrediente === "receta" && !data.sub_receta_id) { alert("Selecciona una receta base"); return; }
+    const input = {
+      receta_id: selectedReceta.id,
+      ingrediente_id: tipoIngrediente === "ingrediente" ? parseInt(data.ingrediente_id!) : null,
+      sub_receta_id: tipoIngrediente === "receta" ? parseInt(data.sub_receta_id!) : null,
+      cantidad: parseFloat(data.cantidad),
+      unidad: data.unidad,
+      merma_porcentaje: parseFloat(data.merma_porcentaje) || 0,
+      notas: data.notas || null,
+      orden: recetaIngredientes.length,
+    };
+    console.log("Añadiendo:", input);
     try {
-      await invoke("add_receta_ingrediente", {
-        input: {
-          receta_id: selectedReceta.id,
-          ingrediente_id: parseInt(data.ingrediente_id),
-          sub_receta_id: null,
-          cantidad: parseFloat(data.cantidad),
-          unidad: data.unidad,
-          merma_porcentaje: parseFloat(data.merma_porcentaje) || 0,
-          notas: data.notas || null,
-          orden: recetaIngredientes.length,
-        },
-      });
+      await invoke("add_receta_ingrediente", { input });
       setShowIngredienteForm(false);
-      resetIng();
+      resetIng({ merma_porcentaje: "0" });
+      setTipoIngrediente("ingrediente");
       loadRecetaIngredientes(selectedReceta.id);
+      loadCosteReceta(selectedReceta.id);
     } catch (e) {
       console.error("Error adding ingrediente:", e);
+      alert("Error: " + e);
     }
   };
 
@@ -326,6 +336,7 @@ export default function Recetas() {
       await invoke("delete_receta_ingrediente", { id });
       if (selectedReceta) {
         loadRecetaIngredientes(selectedReceta.id);
+        loadCosteReceta(selectedReceta.id);
       }
     } catch (e) {
       console.error("Error deleting ingrediente:", e);
@@ -398,23 +409,50 @@ export default function Recetas() {
           <div className="bg-white rounded-lg shadow p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Añadir Ingrediente</h3>
-              <button onClick={() => setShowIngredienteForm(false)} className="text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setShowIngredienteForm(false); setTipoIngrediente("ingrediente"); resetIng({ merma_porcentaje: "0" }); }} className="text-gray-400 hover:text-gray-600">
                 <X size={20} />
+              </button>
+            </div>
+            {/* Toggle ingrediente / receta base */}
+            <div className="flex gap-2 mb-4">
+              <button type="button" onClick={() => setTipoIngrediente("ingrediente")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "ingrediente" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                Ingrediente
+              </button>
+              <button type="button" onClick={() => { setTipoIngrediente("receta"); resetIng({ merma_porcentaje: "0", unidad: "ud" }); }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "receta" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                Receta base
               </button>
             </div>
             <form onSubmit={handleSubmitIng(onSubmitIngrediente)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-                <select
-                  {...registerIng("ingrediente_id")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Seleccionar...</option>
-                  {ingredientes.map((i) => (
-                    <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                  ))}
-                </select>
-                {errorsIng.ingrediente_id && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {tipoIngrediente === "ingrediente" ? "Ingrediente *" : "Receta base *"}
+                </label>
+                {tipoIngrediente === "ingrediente" ? (
+                  <select
+                    {...registerIng("ingrediente_id", { required: tipoIngrediente === "ingrediente" ? "Selecciona un ingrediente" : false })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Seleccionar...</option>
+                    {ingredientes.map((i) => (
+                      <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    {...registerIng("sub_receta_id", { required: tipoIngrediente === "receta" ? "Selecciona una receta base" : false })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">Seleccionar receta base...</option>
+                    {recetasBase.filter(rb => rb.id !== selectedReceta?.id).map((rb) => (
+                      <option key={rb.id} value={rb.id}>{rb.nombre} ({rb.porciones} ud.)</option>
+                    ))}
+                  </select>
+                )}
+                {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
+                {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{errorsIng.sub_receta_id.message}</p>}
+                {recetasBase.length === 0 && tipoIngrediente === "receta" && <p className="text-xs text-gray-400 mt-1">No hay recetas marcadas como base</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad *</label>
@@ -431,12 +469,19 @@ export default function Recetas() {
                 <select
                   {...registerIng("unidad")}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled={tipoIngrediente === "receta"}
                 >
-                  <option value="kg">kg</option>
-                  <option value="g">g</option>
-                  <option value="l">l</option>
-                  <option value="ml">ml</option>
-                  <option value="ud">ud</option>
+                  {tipoIngrediente === "receta" ? (
+                    <option value="ud">ud</option>
+                  ) : (
+                    <>
+                      <option value="kg">kg</option>
+                      <option value="g">g</option>
+                      <option value="l">l</option>
+                      <option value="ml">ml</option>
+                      <option value="ud">ud</option>
+                    </>
+                  )}
                 </select>
               </div>
               <div>
@@ -496,7 +541,14 @@ export default function Recetas() {
                 {recetaIngredientes.map((ri) => (
                   <tr key={ri.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm font-medium text-gray-800">
-                      {ri.ingrediente_nombre ?? "—"}
+                      {ri.sub_receta_id ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded font-semibold">RECETA</span>
+                          {ri.sub_receta_nombre ?? `Receta #${ri.sub_receta_id}`}
+                        </span>
+                      ) : (
+                        ri.ingrediente_nombre ?? "—"
+                      )}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 text-right">{ri.cantidad}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{ri.unidad}</td>

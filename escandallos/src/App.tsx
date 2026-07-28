@@ -10,6 +10,7 @@ import FichasTecnicas from "./pages/FichasTecnicas";
 import Ventas from "./pages/Ventas";
 import MenuEngineering from "./pages/MenuEngineering";
 import Contabilidad from "./pages/Contabilidad";
+import Configuracion from "./pages/Configuracion";
 
 function App() {
   return (
@@ -54,6 +55,10 @@ function App() {
           <a href="/contabilidad" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
             📉 Contabilidad
           </a>
+          <div className="border-t border-slate-700 my-2"></div>
+          <a href="/configuracion" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
+            ⚙️ Configuración
+          </a>
         </nav>
       </aside>
 
@@ -71,6 +76,7 @@ function App() {
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/menu-engineering" element={<MenuEngineering />} />
           <Route path="/contabilidad" element={<Contabilidad />} />
+          <Route path="/configuracion" element={<Configuracion />} />
         </Routes>
       </main>
     </div>
