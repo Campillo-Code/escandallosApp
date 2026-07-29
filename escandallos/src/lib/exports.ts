@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { homeDir } from "@tauri-apps/api/path";
+import { invoke } from "@tauri-apps/api/core";
 
 interface RecetaData {
   nombre: string;
@@ -654,4 +655,228 @@ export async function exportFichaTecnicaPDF(ficha: FichaTecnicaData) {
     const buffer = await blob.arrayBuffer();
     await writeFile(path, new Uint8Array(buffer));
   }
+}
+
+// ========================================
+// ETIQUETA DE PRODUCCIÓN (62x100mm Brother QL)
+// ========================================
+
+export interface EtiquetaData {
+  receta_nombre: string;
+  lote_producto: string;
+  fecha_elaboracion: string;
+  fecha_caducidad: string | null;
+  ingredientes: string[];
+  alergenos: string[];
+  conservacion: string | null;
+  responsable: string | null;
+}
+
+const ALLERGEN_MAP: Record<string, string> = {
+  gluten: "Gluten",
+  crustaceos: "Crustáceos",
+  huevos: "Huevos",
+  pescado: "Pescado",
+  cacahuetes: "Cacahuetes",
+  soja: "Soja",
+  lactosa: "Lácteos",
+  lacteos: "Lácteos",
+  frutos_secos: "Frutos secos",
+  apio: "Apio",
+  mostaza: "Mostaza",
+  sesamo: "Sésamo",
+  sulphites: "Sulfitos",
+  sulfitos: "Sulfitos",
+  altramuz: "Altramuz",
+  moluscos: "Moluscos",
+};
+
+export async function exportEtiquetaPDF(data: EtiquetaData) {
+  const labelW = 100;
+  const labelH = 62;
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [labelW, labelH] });
+
+  const ml = 3;
+  const mr = 3;
+  const cw = labelW - ml - mr;
+  let y = 4;
+
+  // Header
+  doc.setFillColor(40, 50, 100);
+  doc.rect(0, 0, labelW, 8, "F");
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(255);
+  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, 5.5, { align: "center" });
+  y = 14;
+
+  // Product name
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  const nombreLines = doc.splitTextToSize(data.receta_nombre, cw);
+  doc.text(nombreLines, ml, y);
+  y += nombreLines.length * 4 + 2;
+
+  // Divider
+  doc.setDrawColor(180);
+  doc.line(ml, y, labelW - mr, y);
+  y += 3;
+
+  // Lot + dates
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60);
+  doc.text(`Lote: ${data.lote_producto}`, ml, y);
+  y += 3;
+  doc.setFont("helvetica", "normal");
+  doc.text(`Elab: ${data.fecha_elaboracion}`, ml, y);
+  if (data.fecha_caducidad) {
+    doc.text(`Cad: ${data.fecha_caducidad}`, ml + cw / 2, y);
+  }
+  y += 4;
+
+  // Divider
+  doc.line(ml, y, labelW - mr, y);
+  y += 3;
+
+  // Ingredients
+  doc.setFontSize(5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60);
+  doc.text("INGREDIENTES:", ml, y);
+  y += 2.5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0);
+  const ingText = data.ingredientes.join(", ");
+  const ingLines = doc.splitTextToSize(ingText, cw);
+  const maxIngLines = 3;
+  doc.text(ingLines.slice(0, maxIngLines), ml, y);
+  y += Math.min(ingLines.length, maxIngLines) * 2.5 + 1;
+
+  // Allergens
+  if (data.alergenos.length > 0) {
+    doc.setFillColor(255, 240, 240);
+    doc.roundedRect(ml, y - 1, cw, data.alergenos.length > 3 ? 8 : 5.5, 1, 1, "F");
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(180, 0, 0);
+    const alergLabels = data.alergenos.map(a => ALLERGEN_MAP[a.toLowerCase()] || a);
+    doc.text("ALÉRGENOS:", ml + 1, y + 1.5);
+    doc.setFont("helvetica", "normal");
+    const alergText = alergLabels.join(", ");
+    const alergLines = doc.splitTextToSize(alergText, cw - 2);
+    doc.text(alergLines.slice(0, 2), ml + 1, y + 4);
+    y += alergLines.length > 2 ? 9 : 6.5;
+  }
+
+  // Conservation
+  if (data.conservacion) {
+    const bottomY = labelH - 4;
+    doc.setFontSize(5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100);
+    doc.text(`Conservar: ${data.conservacion}`, ml, bottomY);
+  }
+
+  const fileName = `etiqueta_${data.lote_producto}.pdf`;
+  const home = await homeDir();
+  const path = await save({
+    defaultPath: `${home}/${fileName}`,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (path) {
+    const blob = doc.output("blob");
+    const buffer = await blob.arrayBuffer();
+    await writeFile(path, new Uint8Array(buffer));
+  }
+}
+
+export async function printEtiquetaPDF(data: EtiquetaData) {
+  const labelW = 100;
+  const labelH = 62;
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [labelW, labelH] });
+
+  const ml = 3;
+  const mr = 3;
+  const cw = labelW - ml - mr;
+  let y = 4;
+
+  doc.setFillColor(40, 50, 100);
+  doc.rect(0, 0, labelW, 8, "F");
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(255);
+  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, 5.5, { align: "center" });
+  y = 14;
+
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(0);
+  const nombreLines = doc.splitTextToSize(data.receta_nombre, cw);
+  doc.text(nombreLines, ml, y);
+  y += nombreLines.length * 4 + 2;
+
+  doc.setDrawColor(180);
+  doc.line(ml, y, labelW - mr, y);
+  y += 3;
+
+  doc.setFontSize(6);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60);
+  doc.text(`Lote: ${data.lote_producto}`, ml, y);
+  y += 3;
+  doc.setFont("helvetica", "normal");
+  doc.text(`Elab: ${data.fecha_elaboracion}`, ml, y);
+  if (data.fecha_caducidad) {
+    doc.text(`Cad: ${data.fecha_caducidad}`, ml + cw / 2, y);
+  }
+  y += 4;
+
+  doc.line(ml, y, labelW - mr, y);
+  y += 3;
+
+  doc.setFontSize(5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(60);
+  doc.text("INGREDIENTES:", ml, y);
+  y += 2.5;
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0);
+  const ingText = data.ingredientes.join(", ");
+  const ingLines = doc.splitTextToSize(ingText, cw);
+  const maxIngLines = 3;
+  doc.text(ingLines.slice(0, maxIngLines), ml, y);
+  y += Math.min(ingLines.length, maxIngLines) * 2.5 + 1;
+
+  if (data.alergenos.length > 0) {
+    doc.setFillColor(255, 240, 240);
+    doc.roundedRect(ml, y - 1, cw, data.alergenos.length > 3 ? 8 : 5.5, 1, 1, "F");
+    doc.setFontSize(5.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(180, 0, 0);
+    const alergLabels = data.alergenos.map(a => ALLERGEN_MAP[a.toLowerCase()] || a);
+    doc.text("ALÉRGENOS:", ml + 1, y + 1.5);
+    doc.setFont("helvetica", "normal");
+    const alergText = alergLabels.join(", ");
+    const alergLines = doc.splitTextToSize(alergText, cw - 2);
+    doc.text(alergLines.slice(0, 2), ml + 1, y + 4);
+    y += alergLines.length > 2 ? 9 : 6.5;
+  }
+
+  if (data.conservacion) {
+    const bottomY = labelH - 4;
+    doc.setFontSize(5);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100);
+    doc.text(`Conservar: ${data.conservacion}`, ml, bottomY);
+  }
+
+  const home = await homeDir();
+  const tmpPath = `${home}/etiqueta_${data.lote_producto}_tmp.pdf`;
+  const blob = doc.output("blob");
+  const buffer = await blob.arrayBuffer();
+  await writeFile(tmpPath, new Uint8Array(buffer));
+  const printerName = localStorage.getItem("selected_printer") || null;
+  await invoke<string>("print_pdf_file", { path: tmpPath, printerName });
 }

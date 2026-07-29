@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ChefHat, Users, ShoppingCart, AlertTriangle, TrendingDown, TrendingUp, Package, Receipt } from "lucide-react";
+import { ChefHat, Users, ShoppingCart, AlertTriangle, TrendingDown, TrendingUp, Package, Receipt, Clock, Factory } from "lucide-react";
 
 interface DashboardData {
   total_recetas: number;
@@ -21,18 +21,38 @@ interface ContabilidadData {
   ticket_medio: number;
 }
 
+interface LoteAlerta {
+  id: number;
+  ingrediente_nombre: string | null;
+  numero_lote: string;
+  fecha_caducidad: string | null;
+}
+interface ProduccionHoy {
+  id: number;
+  receta_nombre: string | null;
+  lote_producto: string;
+  cantidad_producida: number;
+  fecha_caducidad: string | null;
+}
+
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [contabilidad, setContabilidad] = useState<ContabilidadData | null>(null);
+  const [lotesProximos, setLotesProximos] = useState<LoteAlerta[]>([]);
+  const [produccionHoy, setProduccionHoy] = useState<ProduccionHoy[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       invoke<DashboardData>("get_dashboard_data").catch(() => null),
       invoke<ContabilidadData>("get_contabilidad", { fechaDesde: null, fechaHasta: null }).catch(() => null),
-    ]).then(([dash, contab]) => {
+      invoke<LoteAlerta[]>("get_lotes_proximos_caducar", { dias: 7 }).catch(() => []),
+      invoke<ProduccionHoy[]>("get_produccion_hoy").catch(() => []),
+    ]).then(([dash, contab, lotes, prod]) => {
       setData(dash);
       setContabilidad(contab);
+      setLotesProximos(lotes);
+      setProduccionHoy(prod);
     }).finally(() => setLoading(false));
   }, []);
 
@@ -206,7 +226,59 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+
+        {/* Trazabilidad: Lotes proximos a caducar */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Clock size={20} className="text-orange-500" />
+            <h3 className="text-lg font-semibold">Lotes por caducar (7 días)</h3>
+          </div>
+          {lotesProximos.length === 0 ? (
+            <p className="text-gray-500 text-sm">No hay lotes próximos a caducar</p>
+          ) : (
+            <div className="space-y-2">
+              {lotesProximos.slice(0, 6).map(l => {
+                const diff = l.fecha_caducidad ? Math.ceil((new Date(l.fecha_caducidad).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+                const color = diff !== null ? (diff < 0 ? "bg-red-50 text-red-700 border-red-200" : diff <= 3 ? "bg-orange-50 text-orange-700 border-orange-200" : "bg-yellow-50 text-yellow-700 border-yellow-200") : "bg-gray-50 text-gray-700 border-gray-200";
+                return (
+                  <div key={l.id} className={`flex items-center justify-between p-2 rounded-lg border text-sm ${color}`}>
+                    <span className="font-medium">{l.ingrediente_nombre}</span>
+                    <span className="text-xs font-mono">L{l.numero_lote} · {diff !== null ? (diff < 0 ? `Caducado hace ${Math.abs(diff)}d` : `${diff}d`) : "—"}</span>
+                  </div>
+                );
+              })}
+              {lotesProximos.length > 6 && <p className="text-xs text-gray-400 text-center">+{lotesProximos.length - 6} más</p>}
+            </div>
+          )}
+        </div>
+
+        {/* Trazabilidad: Produccion hoy */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Factory size={20} className="text-blue-500" />
+            <h3 className="text-lg font-semibold">Producción de hoy</h3>
+          </div>
+          {produccionHoy.length === 0 ? (
+            <p className="text-gray-500 text-sm">No hay producción registrada hoy</p>
+          ) : (
+            <div className="space-y-2">
+              {produccionHoy.map(p => (
+                <div key={p.id} className="flex items-center justify-between p-2 bg-blue-50 rounded-lg border border-blue-200 text-sm">
+                  <div>
+                    <span className="font-medium text-blue-800">{p.receta_nombre}</span>
+                    <span className="text-xs text-blue-600 ml-2">L{loteFormat(p.lote_producto)}</span>
+                  </div>
+                  <span className="text-xs text-blue-600">{p.cantidad_producida} ud</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+function loteFormat(lote: string): string {
+  return lote.length > 12 ? lote.slice(-8) : lote;
 }

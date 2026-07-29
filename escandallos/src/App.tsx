@@ -11,6 +11,8 @@ import Ventas from "./pages/Ventas";
 import MenuEngineering from "./pages/MenuEngineering";
 import Contabilidad from "./pages/Contabilidad";
 import Configuracion from "./pages/Configuracion";
+import Lotes from "./pages/Lotes";
+import Produccion from "./pages/Produccion";
 
 function App() {
   return (
@@ -21,7 +23,7 @@ function App() {
           <h1 className="text-xl font-bold">🍽️ Con Sazón_gestión</h1>
           <p className="text-xs text-slate-400 mt-1">Gestión de costes</p>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <a href="/" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
             📊 Dashboard
           </a>
@@ -56,6 +58,13 @@ function App() {
             📉 Contabilidad
           </a>
           <div className="border-t border-slate-700 my-2"></div>
+          <a href="/lotes" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
+            🏷️ Lotes
+          </a>
+          <a href="/produccion" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
+            🏭 Producción
+          </a>
+          <div className="border-t border-slate-700 my-2"></div>
           <a href="/configuracion" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
             ⚙️ Configuración
           </a>
@@ -77,6 +86,8 @@ function App() {
           <Route path="/menu-engineering" element={<MenuEngineering />} />
           <Route path="/contabilidad" element={<Contabilidad />} />
           <Route path="/configuracion" element={<Configuracion />} />
+          <Route path="/lotes" element={<Lotes />} />
+          <Route path="/produccion" element={<Produccion />} />
         </Routes>
       </main>
     </div>

@@ -1827,6 +1827,265 @@ async fn get_dashboard_data() -> Result<DashboardData, String> {
 }
 
 // ========================================
+// TRAZABILIDAD - LOTES
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct LoteIngrediente {
+    pub id: i64,
+    pub ingrediente_id: i64,
+    pub ingrediente_nombre: Option<String>,
+    pub proveedor_id: i64,
+    pub proveedor_nombre: Option<String>,
+    pub numero_lote: String,
+    pub fecha_recepcion: String,
+    pub fecha_caducidad: Option<String>,
+    pub cantidad_recibida: f64,
+    pub unidad: String,
+    pub albaran_id: Option<i64>,
+    pub notas: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoteInput {
+    pub ingrediente_id: i64,
+    pub proveedor_id: i64,
+    pub numero_lote: String,
+    pub fecha_recepcion: String,
+    pub fecha_caducidad: Option<String>,
+    pub cantidad_recibida: f64,
+    pub unidad: String,
+    pub albaran_id: Option<i64>,
+    pub notas: Option<String>,
+}
+
+#[tauri::command]
+async fn get_lotes(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<LoteIngrediente>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<LoteIngrediente> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_recepcion BETWEEN ? AND ? ORDER BY l.fecha_recepcion DESC")
+            .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id ORDER BY l.fecha_recepcion DESC")
+            .fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn create_lote(input: LoteInput) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    let result = sqlx::query("INSERT INTO lotes_ingredientes (ingrediente_id, proveedor_id, numero_lote, fecha_recepcion, fecha_caducidad, cantidad_recibida, unidad, albaran_id, notas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(input.ingrediente_id).bind(input.proveedor_id).bind(&input.numero_lote)
+        .bind(&input.fecha_recepcion).bind(&input.fecha_caducidad)
+        .bind(input.cantidad_recibida).bind(&input.unidad)
+        .bind(input.albaran_id).bind(&input.notas)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn update_lote(id: i64, input: LoteInput) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("UPDATE lotes_ingredientes SET ingrediente_id = ?, proveedor_id = ?, numero_lote = ?, fecha_recepcion = ?, fecha_caducidad = ?, cantidad_recibida = ?, unidad = ?, albaran_id = ?, notas = ? WHERE id = ?")
+        .bind(input.ingrediente_id).bind(input.proveedor_id).bind(&input.numero_lote)
+        .bind(&input.fecha_recepcion).bind(&input.fecha_caducidad)
+        .bind(input.cantidad_recibida).bind(&input.unidad)
+        .bind(input.albaran_id).bind(&input.notas)
+        .bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_lote(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM lotes_ingredientes WHERE id = ?").bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_lotes_proximos_caducar(dias: i32) -> Result<Vec<LoteIngrediente>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<LoteIngrediente> = sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_caducidad IS NOT NULL AND l.fecha_caducidad <= DATE_ADD(CURDATE(), INTERVAL ? DAY) ORDER BY l.fecha_caducidad ASC")
+        .bind(dias).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+// ========================================
+// TRAZABILIDAD - PRODUCCION
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Produccion {
+    pub id: i64,
+    pub receta_id: i64,
+    pub receta_nombre: Option<String>,
+    pub fecha_elaboracion: String,
+    pub cantidad_producida: i32,
+    pub lote_producto: String,
+    pub fecha_caducidad: Option<String>,
+    pub responsable: Option<String>,
+    pub notas: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProduccionInput {
+    pub receta_id: i64,
+    pub fecha_elaboracion: String,
+    pub cantidad_producida: i32,
+    pub lote_producto: String,
+    pub fecha_caducidad: Option<String>,
+    pub responsable: Option<String>,
+    pub notas: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct ProduccionDetalle {
+    pub id: i64,
+    pub produccion_id: i64,
+    pub lote_ingrediente_id: i64,
+    pub lote_numero: Option<String>,
+    pub ingrediente_nombre: Option<String>,
+    pub cantidad_utilizada: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProduccionDetalleInput {
+    pub lote_ingrediente_id: i64,
+    pub cantidad_utilizada: f64,
+}
+
+#[tauri::command]
+async fn get_produccion(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<Produccion>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<Produccion> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as("SELECT pr.id, pr.receta_id, r.nombre AS receta_nombre, DATE_FORMAT(pr.fecha_elaboracion, '%Y-%m-%d %H:%i') AS fecha_elaboracion, pr.cantidad_producida, pr.lote_producto, DATE_FORMAT(pr.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, pr.responsable, pr.notas FROM produccion pr LEFT JOIN recetas r ON pr.receta_id = r.id WHERE DATE(pr.fecha_elaboracion) BETWEEN ? AND ? ORDER BY pr.fecha_elaboracion DESC")
+            .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as("SELECT pr.id, pr.receta_id, r.nombre AS receta_nombre, DATE_FORMAT(pr.fecha_elaboracion, '%Y-%m-%d %H:%i') AS fecha_elaboracion, pr.cantidad_producida, pr.lote_producto, DATE_FORMAT(pr.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, pr.responsable, pr.notas FROM produccion pr LEFT JOIN recetas r ON pr.receta_id = r.id ORDER BY pr.fecha_elaboracion DESC")
+            .fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn create_produccion(input: ProduccionInput, detalles: Vec<ProduccionDetalleInput>) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    let result = sqlx::query("INSERT INTO produccion (receta_id, fecha_elaboracion, cantidad_producida, lote_producto, fecha_caducidad, responsable, notas) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(input.receta_id).bind(&input.fecha_elaboracion).bind(input.cantidad_producida)
+        .bind(&input.lote_producto).bind(&input.fecha_caducidad)
+        .bind(&input.responsable).bind(&input.notas)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    let produccion_id = result.last_insert_id() as i64;
+    for d in &detalles {
+        sqlx::query("INSERT INTO produccion_detalle (produccion_id, lote_ingrediente_id, cantidad_utilizada) VALUES (?, ?, ?)")
+            .bind(produccion_id).bind(d.lote_ingrediente_id).bind(d.cantidad_utilizada)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    Ok(produccion_id)
+}
+
+#[tauri::command]
+async fn delete_produccion(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM produccion_detalle WHERE produccion_id = ?").bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM produccion WHERE id = ?").bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_produccion_detalles(produccion_id: i64) -> Result<Vec<ProduccionDetalle>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<ProduccionDetalle> = sqlx::query_as("SELECT pd.id, pd.produccion_id, pd.lote_ingrediente_id, l.numero_lote AS lote_numero, i.nombre AS ingrediente_nombre, CAST(pd.cantidad_utilizada AS DOUBLE) FROM produccion_detalle pd LEFT JOIN lotes_ingredientes l ON pd.lote_ingrediente_id = l.id LEFT JOIN ingredientes i ON l.ingrediente_id = i.id WHERE pd.produccion_id = ?")
+        .bind(produccion_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn generar_lote_produccion() -> Result<String, String> {
+    let pool = &db::get_pool();
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    let prefix = format!("P-{}-", today);
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM produccion WHERE lote_producto LIKE ?")
+        .bind(format!("{}%", prefix))
+        .fetch_one(pool).await.map_err(|e| e.to_string())?;
+    Ok(format!("{}{:03}", prefix, count.0 + 1))
+}
+
+#[tauri::command]
+async fn get_produccion_hoy() -> Result<Vec<Produccion>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<Produccion> = sqlx::query_as("SELECT pr.id, pr.receta_id, r.nombre AS receta_nombre, DATE_FORMAT(pr.fecha_elaboracion, '%Y-%m-%d %H:%i') AS fecha_elaboracion, pr.cantidad_producida, pr.lote_producto, DATE_FORMAT(pr.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, pr.responsable, pr.notas FROM produccion pr LEFT JOIN recetas r ON pr.receta_id = r.id WHERE DATE(pr.fecha_elaboracion) = CURDATE() ORDER BY pr.fecha_elaboracion DESC")
+        .fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+// ========================================
+// ETIQUETAS
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct EtiquetaData {
+    pub produccion_id: i64,
+    pub receta_nombre: String,
+    pub lote_producto: String,
+    pub fecha_elaboracion: String,
+    pub fecha_caducidad: Option<String>,
+    pub ingredientes: Vec<String>,
+    pub alergenos: Vec<String>,
+    pub conservacion: Option<String>,
+    pub responsable: Option<String>,
+}
+
+#[tauri::command]
+async fn get_etiqueta_data(produccion_id: i64) -> Result<EtiquetaData, String> {
+    let pool = &db::get_pool();
+
+    let prod: Option<Produccion> = sqlx::query_as("SELECT pr.id, pr.receta_id, r.nombre AS receta_nombre, DATE_FORMAT(pr.fecha_elaboracion, '%Y-%m-%d %H:%i') AS fecha_elaboracion, pr.cantidad_producida, pr.lote_producto, DATE_FORMAT(pr.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, pr.responsable, pr.notas FROM produccion pr LEFT JOIN recetas r ON pr.receta_id = r.id WHERE pr.id = ?")
+        .bind(produccion_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    let prod = prod.ok_or("Producción no encontrada")?;
+
+    // Get ingredient names from recipe
+    let ingredientes: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT i.nombre FROM receta_ingredientes ri LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE ri.receta_id = ? AND i.nombre IS NOT NULL"
+    ).bind(prod.receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    // Get allergens from recipe ingredients
+    let alergenos: Vec<(String,)> = sqlx::query_as(
+        "SELECT DISTINCT i.alergenos FROM receta_ingredientes ri LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE ri.receta_id = ? AND i.alergenos IS NOT NULL AND i.alergenos != '' AND i.alergenos != '[]'"
+    ).bind(prod.receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    // Parse allergens from JSON arrays
+    let mut all_alergenos: Vec<String> = Vec::new();
+    for (alerg_json,) in alergenos {
+        if let Ok(arr) = serde_json::from_str::<Vec<String>>(&alerg_json) {
+            for a in arr {
+                if !all_alergenos.contains(&a) {
+                    all_alergenos.push(a);
+                }
+            }
+        }
+    }
+
+    // Get conservacion from ficha tecnica
+    let conservacion: Option<(Option<String>,)> = sqlx::query_as(
+        "SELECT conservacion FROM fichas_tecnicas WHERE receta_id = ?"
+    ).bind(prod.receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+    Ok(EtiquetaData {
+        produccion_id: prod.id,
+        receta_nombre: prod.receta_nombre.unwrap_or_default(),
+        lote_producto: prod.lote_producto,
+        fecha_elaboracion: prod.fecha_elaboracion,
+        fecha_caducidad: prod.fecha_caducidad,
+        ingredientes: ingredientes.into_iter().map(|(n,)| n).collect(),
+        alergenos: all_alergenos,
+        conservacion: conservacion.and_then(|(c,)| c),
+        responsable: prod.responsable,
+    })
+}
+
+// ========================================
 // CONFIGURACION
 // ========================================
 
@@ -1876,6 +2135,108 @@ async fn activate_and_switch_db(id: String) -> Result<Vec<db::DbConfig>, String>
     let active = configs.iter().find(|c| c.activa).ok_or("No hay config activa")?;
     db::switch_db(active).await.map_err(|e| e.to_string())?;
     Ok(configs)
+}
+
+// ========================================
+// IMPRESORAS
+// ========================================
+
+#[derive(Serialize, Deserialize)]
+struct PrinterInfo {
+    name: String,
+    is_default: bool,
+}
+
+#[tauri::command]
+async fn get_printers() -> Result<Vec<PrinterInfo>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let output = std::process::Command::new("powershell")
+            .args(["-Command", "Get-Printer | Select-Object Name, Default | ConvertTo-Json"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        if stdout.trim().is_empty() {
+            return Ok(vec![]);
+        }
+        let printers: Vec<PrinterInfo> = if stdout.trim().starts_with('[') {
+            serde_json::from_str(&stdout).map_err(|e| e.to_string())?
+        } else {
+            let p: PrinterInfo = serde_json::from_str(&stdout).map_err(|e| e.to_string())?;
+            vec![p]
+        };
+        return Ok(printers);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("lpstat")
+            .args(["-p"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let default_output = std::process::Command::new("lpstat")
+            .args(["-d"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let default_str = String::from_utf8_lossy(&default_output.stdout).to_string();
+        let default_name = default_str.trim().trim_start_matches("system default destination: ").trim().to_string();
+        let mut printers = vec![];
+        for line in stdout.lines() {
+            if line.starts_with("printer ") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    printers.push(PrinterInfo {
+                        name: parts[1].to_string(),
+                        is_default: parts[1] == default_name,
+                    });
+                }
+            }
+        }
+        return Ok(printers);
+    }
+}
+
+#[tauri::command]
+async fn print_pdf_file(path: String, printer_name: Option<String>) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let printer_arg = printer_name.unwrap_or_default();
+        let ps_script = if printer_arg.is_empty() {
+            format!("Start-Process -FilePath '{}' -Verb Print", path)
+        } else {
+            format!(
+                "Start-Process -FilePath '{}' -Verb PrintTo -ArgumentList '{}'",
+                path, printer_arg
+            )
+        };
+        let output = std::process::Command::new("powershell")
+            .args(["-Command", &ps_script])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if output.status.success() {
+            Ok("Impresión enviada".to_string())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).to_string())
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let mut args = vec![];
+        if let Some(ref name) = printer_name {
+            args.push("-d");
+            args.push(name);
+        }
+        args.push(&path);
+        let output = std::process::Command::new("lp")
+            .args(&args)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if output.status.success() {
+            Ok("Impresión enviada".to_string())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).to_string())
+        }
+    }
 }
 
 // ========================================
@@ -1974,6 +2335,20 @@ pub fn run() {
             set_active_db,
             test_db_connection,
             activate_and_switch_db,
+            get_lotes,
+            create_lote,
+            update_lote,
+            delete_lote,
+            get_lotes_proximos_caducar,
+            get_produccion,
+            create_produccion,
+            delete_produccion,
+            get_produccion_detalles,
+            generar_lote_produccion,
+            get_produccion_hoy,
+            get_etiqueta_data,
+            get_printers,
+            print_pdf_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

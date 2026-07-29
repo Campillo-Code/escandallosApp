@@ -60,14 +60,82 @@ pub async fn init_db() -> Result<(), sqlx::Error> {
         None => "mysql://campillo:mayo1500@192.168.1.151:3306/escandallos_db".to_string(),
     };
     let pool = MySqlPool::connect(&url).await?;
-    *DB_POOL.lock().unwrap() = Some(pool);
+    *DB_POOL.lock().unwrap() = Some(pool.clone());
+    // Migrations run after pool is set so the app works even if migrations are slow
+    tokio::spawn(async move {
+        run_migrations(&pool).await;
+    });
     Ok(())
+}
+
+async fn run_migrations(pool: &MySqlPool) {
+    let migrations = [
+        "CREATE TABLE IF NOT EXISTS lotes_ingredientes (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            ingrediente_id INT NOT NULL,
+            proveedor_id INT NOT NULL,
+            numero_lote VARCHAR(100) NOT NULL,
+            fecha_recepcion DATE NOT NULL,
+            fecha_caducidad DATE,
+            cantidad_recibida DECIMAL(12,2) NOT NULL DEFAULT 0,
+            unidad VARCHAR(20) NOT NULL,
+            albaran_id INT,
+            notas TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_lotes_ingrediente (ingrediente_id),
+            KEY idx_lotes_proveedor (proveedor_id),
+            KEY idx_lotes_albaran (albaran_id),
+            KEY idx_lotes_caducidad (fecha_caducidad)
+        )",
+        "CREATE TABLE IF NOT EXISTS produccion (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            receta_id INT NOT NULL,
+            fecha_elaboracion DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            cantidad_producida INT NOT NULL DEFAULT 1,
+            lote_producto VARCHAR(100) NOT NULL,
+            fecha_caducidad DATE,
+            responsable VARCHAR(100),
+            notas TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_produccion_receta (receta_id),
+            KEY idx_produccion_lote (lote_producto),
+            KEY idx_produccion_caducidad (fecha_caducidad)
+        )",
+        "CREATE TABLE IF NOT EXISTS produccion_detalle (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            produccion_id INT NOT NULL,
+            lote_ingrediente_id INT NOT NULL,
+            cantidad_utilizada DECIMAL(12,2) NOT NULL DEFAULT 0,
+            KEY idx_pd_produccion (produccion_id),
+            KEY idx_pd_lote (lote_ingrediente_id)
+        )",
+    ];
+    for sql in &migrations {
+        match sqlx::query(sql).execute(pool).await {
+            Ok(_) => println!("Migration OK: {}", &sql[..40]),
+            Err(e) => eprintln!("Migration info: {}", e),
+        }
+    }
+    // Check if columns exist before ALTER
+    let check: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'albaranes_detalle' AND COLUMN_NAME = 'numero_lote'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check.is_some() {
+        println!("Columns already exist, skipping ALTER");
+    } else {
+        let _ = sqlx::query("ALTER TABLE albaranes_detalle ADD COLUMN numero_lote VARCHAR(100) AFTER precio_unitario").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE albaranes_detalle ADD COLUMN fecha_caducidad DATE AFTER numero_lote").execute(pool).await;
+        println!("ALTER TABLE albaranes_detalle completed");
+    }
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {
     let url = build_url(config);
     let pool = MySqlPool::connect(&url).await?;
-    *DB_POOL.lock().unwrap() = Some(pool);
+    *DB_POOL.lock().unwrap() = Some(pool.clone());
+    tokio::spawn(async move {
+        run_migrations(&pool).await;
+    });
     Ok(())
 }
 
