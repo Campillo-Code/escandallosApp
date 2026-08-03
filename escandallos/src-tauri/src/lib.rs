@@ -1863,10 +1863,10 @@ pub struct LoteInput {
 async fn get_lotes(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<LoteIngrediente>, String> {
     let pool = &db::get_pool();
     let rows: Vec<LoteIngrediente> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
-        sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_recepcion BETWEEN ? AND ? ORDER BY l.fecha_recepcion DESC")
+        sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE) AS cantidad_recibida, l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_recepcion BETWEEN ? AND ? ORDER BY l.fecha_recepcion DESC")
             .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
-        sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id ORDER BY l.fecha_recepcion DESC")
+        sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE) AS cantidad_recibida, l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id ORDER BY l.fecha_recepcion DESC")
             .fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
@@ -1917,7 +1917,7 @@ async fn generar_numero_lote() -> Result<String, String> {
 #[tauri::command]
 async fn get_lotes_proximos_caducar(dias: i32) -> Result<Vec<LoteIngrediente>, String> {
     let pool = &db::get_pool();
-    let rows: Vec<LoteIngrediente> = sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_caducidad IS NOT NULL AND l.fecha_caducidad <= DATE_ADD(CURDATE(), INTERVAL ? DAY) ORDER BY l.fecha_caducidad ASC")
+    let rows: Vec<LoteIngrediente> = sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE) AS cantidad_recibida, l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_caducidad IS NOT NULL AND l.fecha_caducidad <= DATE_ADD(CURDATE(), INTERVAL ? DAY) ORDER BY l.fecha_caducidad ASC")
         .bind(dias).fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
@@ -2007,7 +2007,7 @@ async fn delete_produccion(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_produccion_detalles(produccion_id: i64) -> Result<Vec<ProduccionDetalle>, String> {
     let pool = &db::get_pool();
-    let rows: Vec<ProduccionDetalle> = sqlx::query_as("SELECT pd.id, pd.produccion_id, pd.lote_ingrediente_id, l.numero_lote AS lote_numero, i.nombre AS ingrediente_nombre, CAST(pd.cantidad_utilizada AS DOUBLE) FROM produccion_detalle pd LEFT JOIN lotes_ingredientes l ON pd.lote_ingrediente_id = l.id LEFT JOIN ingredientes i ON l.ingrediente_id = i.id WHERE pd.produccion_id = ?")
+    let rows: Vec<ProduccionDetalle> = sqlx::query_as("SELECT pd.id, pd.produccion_id, pd.lote_ingrediente_id, l.numero_lote AS lote_numero, i.nombre AS ingrediente_nombre, CAST(pd.cantidad_utilizada AS DOUBLE) AS cantidad_utilizada FROM produccion_detalle pd LEFT JOIN lotes_ingredientes l ON pd.lote_ingrediente_id = l.id LEFT JOIN ingredientes i ON l.ingrediente_id = i.id WHERE pd.produccion_id = ?")
         .bind(produccion_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
