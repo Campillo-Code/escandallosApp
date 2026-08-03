@@ -43,15 +43,17 @@ export default function Lotes() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
-  const [fechaDesde, setFechaDesde] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d.toISOString().split("T")[0]; });
-  const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split("T")[0]);
+  const [error, setError] = useState<string | null>(null);
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
   const [lotesProximos, setLotesProximos] = useState<Lote[]>([]);
 
   const loadLotes = async () => {
     try {
-      const result = await invoke<Lote[]>("get_lotes", { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+      setError(null);
+      const result = await invoke<Lote[]>("get_lotes", { fecha_desde: fechaDesde || null, fecha_hasta: fechaHasta || null });
       setLotes(result);
-    } catch (e) { console.error(e); }
+    } catch (e) { setError(String(e)); console.error(e); }
   };
   const loadProximos = async () => {
     try {
@@ -207,6 +209,7 @@ export default function Lotes() {
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+          error ? <div className="p-6 text-center text-red-500">Error: {error}</div> :
           lotes.length === 0 ? <div className="p-6 text-center text-gray-500">No hay lotes registrados</div> : (
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
