@@ -172,7 +172,7 @@ export default function Inventario() {
   const handleDeleteStock = async (ingredienteId: number) => {
     if (!confirm("¿Eliminar este ingrediente del inventario?")) return;
     try {
-      await invoke("delete_inventario", { ingredienteId });
+      await invoke("delete_inventario", { ingrediente_id: ingredienteId });
       loadInventario();
     } catch (e) {
       alert("Error al eliminar: " + e);

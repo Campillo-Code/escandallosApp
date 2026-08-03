@@ -56,10 +56,10 @@ export default function Produccion() {
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
 
   const loadProduccion = async () => {
-    try { setProducciones(await invoke("get_produccion", { fechaDesde, fechaHasta })); } catch (e) { console.error(e); }
+    try { setProducciones(await invoke("get_produccion", { fecha_desde: fechaDesde, fecha_hasta: fechaHasta })); } catch (e) { console.error(e); }
   };
   const loadLotes = async () => {
-    try { setLotes(await invoke("get_lotes", { fechaDesde: null, fechaHasta: null })); } catch (e) { console.error(e); }
+    try { setLotes(await invoke("get_lotes", { fecha_desde: null, fecha_hasta: null })); } catch (e) { console.error(e); }
   };
 
   useEffect(() => {
@@ -118,7 +118,7 @@ export default function Produccion() {
   const toggleExpand = async (id: number) => {
     if (expandedId === id) { setExpandedId(null); return; }
     try {
-      const det = await invoke<DetalleLine[]>("get_produccion_detalles", { produccionId: id });
+      const det = await invoke<DetalleLine[]>("get_produccion_detalles", { produccion_id: id });
       setDetallesExpandido(det);
       setExpandedId(id);
     } catch (e) { console.error(e); }
@@ -127,7 +127,7 @@ export default function Produccion() {
   const handleEtiqueta = async (prodId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
+      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccion_id: prodId });
       await exportEtiquetaPDF(data);
     } catch (err) { alert("Error generando etiqueta: " + err); }
   };
@@ -135,7 +135,7 @@ export default function Produccion() {
   const handlePrintEtiqueta = async (prodId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
+      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccion_id: prodId });
       await printEtiquetaPDF(data);
     } catch (err) { alert("Error imprimiendo etiqueta: " + err); }
   };

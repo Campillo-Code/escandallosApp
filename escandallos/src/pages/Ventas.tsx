@@ -22,7 +22,7 @@ export default function Ventas() {
 
   const loadVentas = async () => {
     try {
-      const data = await invoke<Venta[]>("get_ventas", { fechaDesde: fechaDesde || null, fechaHasta: fechaHasta || null });
+      const data = await invoke<Venta[]>("get_ventas", { fecha_desde: fechaDesde || null, fecha_hasta: fechaHasta || null });
       setVentas(data);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }

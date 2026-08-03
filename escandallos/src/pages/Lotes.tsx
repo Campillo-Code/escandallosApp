@@ -49,7 +49,7 @@ export default function Lotes() {
 
   const loadLotes = async () => {
     try {
-      const result = await invoke<Lote[]>("get_lotes", { fechaDesde, fechaHasta });
+      const result = await invoke<Lote[]>("get_lotes", { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
       setLotes(result);
     } catch (e) { console.error(e); }
   };

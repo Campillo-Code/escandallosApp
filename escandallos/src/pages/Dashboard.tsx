@@ -45,7 +45,7 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       invoke<DashboardData>("get_dashboard_data").catch(() => null),
-      invoke<ContabilidadData>("get_contabilidad", { fechaDesde: null, fechaHasta: null }).catch(() => null),
+      invoke<ContabilidadData>("get_contabilidad", { fecha_desde: null, fecha_hasta: null }).catch(() => null),
       invoke<LoteAlerta[]>("get_lotes_proximos_caducar", { dias: 7 }).catch(() => []),
       invoke<ProduccionHoy[]>("get_produccion_hoy").catch(() => []),
     ]).then(([dash, contab, lotes, prod]) => {
