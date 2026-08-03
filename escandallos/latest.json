@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "notes": "Nueva versión con actualización automática",
+  "pub_date": "2026-08-03T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSa214N2ZvSWhsK2FPeCsyVzdVYzZyRzd0SWlRbjBmQkdaQ0tYdkJrTmFodzhoVzU5Q0N5V3dHMDJuUzY4anhwelpXNGV1eDJ4ZEtuZExrWW82clFtTENrcURGMk1PVVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzUxMjI0CWZpbGU6Y29uLXNhem9uLWdlc3Rpb25fMC4yLjBfeDY0LXNldHVwLmV4ZQpncUFUR255aktVelFtNzhkcUVPRWpsaDg0cW1tbUg5ZWcvNElVMHpNUmNyQUI2VWZocGE5cnVNeU91WVUvT2FCT2NYNlRPR0RBS010YWVXL0xQOVZEZz09Cg==",
+      "url": "https://github.com/campillo/con-sazon-gestion/releases/download/v0.2.0/con-sazon-gestion_0.2.0_x64-setup.exe"
+    }
+  }
+}
