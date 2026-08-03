@@ -767,7 +767,7 @@ pub struct AlbaranDetalleInput {
 async fn get_albaranes() -> Result<Vec<Albaran>, String> {
     let pool = &db::get_pool();
     let rows: Vec<Albaran> = sqlx::query_as(
-        "SELECT a.id, a.proveedor_id, p.nombre AS proveedor_nombre, a.numero_albaran, DATE_FORMAT(a.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, CAST(a.total AS DOUBLE) AS total, a.notas, a.procesado FROM albaranes a INNER JOIN proveedores p ON a.proveedor_id = p.id ORDER BY a.fecha_recepcion DESC"
+        "SELECT a.id, a.proveedor_id, p.nombre AS proveedor_nombre, a.numero_albaran, DATE_FORMAT(a.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, CAST(a.total AS DOUBLE) AS total, a.notas, a.procesado FROM albaranes a LEFT JOIN proveedores p ON a.proveedor_id = p.id ORDER BY a.fecha_recepcion DESC"
     )
     .fetch_all(pool)
     .await

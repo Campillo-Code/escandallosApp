@@ -9,8 +9,8 @@ async function checkForUpdates() {
   try {
     const update = await check();
     if (update) {
-      const shouldUpdate = confirm(
-        `Nueva versión disponible: v${update.version}\n\n¿Deseas actualizar ahora?`
+      const shouldUpdate = window.confirm(
+        `Nueva versión disponible: v${update.version}\n\n¿Deseas descargar e instalar ahora?\nLa app se reiniciará automáticamente.`
       );
       if (shouldUpdate) {
         await update.downloadAndInstall();
@@ -31,4 +31,4 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   </React.StrictMode>,
 );
 
-checkForUpdates();
+setTimeout(checkForUpdates, 3000);

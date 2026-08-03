@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer } from "lucide-react";
+import { getVersion } from "@tauri-apps/api/app";
 
 interface DbConfig {
   id: string;
@@ -38,6 +39,9 @@ export default function Configuracion() {
   const [printers, setPrinters] = useState<PrinterInfo[]>([]);
   const [selectedPrinter, setSelectedPrinter] = useState<string>("");
   const [loadingPrinters, setLoadingPrinters] = useState(true);
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
   const loadConfigs = async () => {
     try {
@@ -153,7 +157,10 @@ export default function Configuracion() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">Configuración</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-bold text-gray-800">Configuración</h2>
+          {appVersion && <span className="text-sm text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">v{appVersion}</span>}
+        </div>
         {!showForm && (
           <button onClick={openAdd} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
             <Plus size={18} /> Nueva BBDD
