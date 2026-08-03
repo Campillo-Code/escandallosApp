@@ -20,6 +20,7 @@ interface Lote {
 
 interface Ingrediente { id: number; nombre: string; unidad_base: string; }
 interface Proveedor { id: number; nombre: string; }
+interface Albaran { id: number; proveedor_nombre: string; numero_albaran: string; fecha_recepcion: string; }
 
 const emptyForm = {
   ingrediente_id: 0,
@@ -29,6 +30,7 @@ const emptyForm = {
   fecha_caducidad: "",
   cantidad_recibida: 0,
   unidad: "kg",
+  albaran_id: null as number | null,
   notas: "",
 };
 
@@ -36,6 +38,7 @@ export default function Lotes() {
   const [lotes, setLotes] = useState<Lote[]>([]);
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
+  const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -58,25 +61,35 @@ export default function Lotes() {
   };
   const loadIngredientes = async () => { try { setIngredientes(await invoke("get_ingredientes")); } catch (e) { console.error(e); } };
   const loadProveedores = async () => { try { setProveedores(await invoke("get_proveedores")); } catch (e) { console.error(e); } };
+  const loadAlbaranes = async () => { try { setAlbaranes(await invoke("get_albaranes")); } catch (e) { console.error(e); } };
 
-  useEffect(() => { Promise.all([loadLotes(), loadProximos(), loadIngredientes(), loadProveedores()]).finally(() => setLoading(false)); }, []);
+  useEffect(() => { Promise.all([loadLotes(), loadProximos(), loadIngredientes(), loadProveedores(), loadAlbaranes()]).finally(() => setLoading(false)); }, []);
   useEffect(() => { loadLotes(); }, [fechaDesde, fechaHasta]);
 
-  const handleChange = (field: string, value: string | number) => setForm(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field: string, value: string | number | null) => setForm(prev => ({ ...prev, [field]: value }));
 
-  const openAdd = () => { setEditingId(null); setForm(emptyForm); setShowForm(true); };
+  const openAdd = async () => {
+    setEditingId(null);
+    try {
+      const numeroLote = await invoke<string>("generar_numero_lote");
+      setForm({ ...emptyForm, numero_lote: numeroLote });
+    } catch (e) {
+      setForm(emptyForm);
+    }
+    setShowForm(true);
+  };
   const openEdit = (l: Lote) => {
     setEditingId(l.id); setShowForm(true);
     setForm({
       ingrediente_id: l.ingrediente_id, proveedor_id: l.proveedor_id, numero_lote: l.numero_lote,
       fecha_recepcion: l.fecha_recepcion, fecha_caducidad: l.fecha_caducidad ?? "",
-      cantidad_recibida: l.cantidad_recibida, unidad: l.unidad, notas: l.notas ?? "",
+      cantidad_recibida: l.cantidad_recibida, unidad: l.unidad, albaran_id: l.albaran_id, notas: l.notas ?? "",
     });
   };
 
   const handleSave = async () => {
     try {
-      const input = { ...form, fecha_caducidad: form.fecha_caducidad || null, notas: form.notas || null };
+      const input = { ...form, fecha_caducidad: form.fecha_caducidad || null, notas: form.notas || null, albaran_id: form.albaran_id || null };
       if (editingId) { await invoke("update_lote", { id: editingId, input }); }
       else { await invoke("create_lote", { input }); }
       setShowForm(false); loadLotes(); loadProximos();
@@ -148,7 +161,14 @@ export default function Lotes() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Nº Lote *</label>
-              <input value={form.numero_lote} onChange={e => handleChange("numero_lote", e.target.value)} placeholder="Ej: L2026-045" className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+              <input value={form.numero_lote} readOnly className="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Albarán de compra</label>
+              <select value={form.albaran_id ?? ""} onChange={e => handleChange("albaran_id", e.target.value ? parseInt(e.target.value) : null)} className="w-full border border-gray-300 rounded-lg px-3 py-2">
+                <option value="">Ninguno</option>
+                {albaranes.map(a => <option key={a.id} value={a.id}>#{a.id} - {a.proveedor_nombre} ({a.fecha_recepcion})</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fecha recepción *</label>

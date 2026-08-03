@@ -108,7 +108,7 @@ export default function Dashboard() {
               <TrendingDown size={24} className={data?.food_cost_medio != null && data.food_cost_medio <= 30 ? "text-green-600" : data?.food_cost_medio != null && data.food_cost_medio <= 35 ? "text-yellow-600" : "text-red-600"} />
             </div>
             <div>
-              <p className="text-sm text-gray-500">Food Cost Medio</p>
+              <p className="text-sm text-gray-500">Coste Medio Plato</p>
               <p className="text-2xl font-bold text-gray-800">
                 {data?.food_cost_medio != null ? `${data.food_cost_medio.toFixed(1)}%` : "N/A"}
               </p>

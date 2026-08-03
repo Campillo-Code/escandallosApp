@@ -1904,6 +1904,17 @@ async fn delete_lote(id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn generar_numero_lote() -> Result<String, String> {
+    let pool = &db::get_pool();
+    let today = chrono::Local::now().format("%Y%m%d").to_string();
+    let prefix = format!("L-{}-", today);
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM lotes_ingredientes WHERE numero_lote LIKE ?")
+        .bind(format!("{}%", prefix))
+        .fetch_one(pool).await.map_err(|e| e.to_string())?;
+    Ok(format!("{}{:03}", prefix, count + 1))
+}
+
+#[tauri::command]
 async fn get_lotes_proximos_caducar(dias: i32) -> Result<Vec<LoteIngrediente>, String> {
     let pool = &db::get_pool();
     let rows: Vec<LoteIngrediente> = sqlx::query_as("SELECT l.id, l.ingrediente_id, i.nombre AS ingrediente_nombre, l.proveedor_id, p.nombre AS proveedor_nombre, l.numero_lote, DATE_FORMAT(l.fecha_recepcion, '%Y-%m-%d') AS fecha_recepcion, DATE_FORMAT(l.fecha_caducidad, '%Y-%m-%d') AS fecha_caducidad, CAST(l.cantidad_recibida AS DOUBLE), l.unidad, l.albaran_id, l.notas FROM lotes_ingredientes l LEFT JOIN ingredientes i ON l.ingrediente_id = i.id LEFT JOIN proveedores p ON l.proveedor_id = p.id WHERE l.fecha_caducidad IS NOT NULL AND l.fecha_caducidad <= DATE_ADD(CURDATE(), INTERVAL ? DAY) ORDER BY l.fecha_caducidad ASC")
@@ -2341,6 +2352,7 @@ pub fn run() {
             create_lote,
             update_lote,
             delete_lote,
+            generar_numero_lote,
             get_lotes_proximos_caducar,
             get_produccion,
             create_produccion,
