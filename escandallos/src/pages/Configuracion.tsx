@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer, Download } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
+import { check } from "@tauri-apps/plugin-updater";
 
 interface DbConfig {
   id: string;
@@ -40,8 +41,32 @@ export default function Configuracion() {
   const [selectedPrinter, setSelectedPrinter] = useState<string>("");
   const [loadingPrinters, setLoadingPrinters] = useState(true);
   const [appVersion, setAppVersion] = useState<string>("");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+
+  const checkForUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const update = await check();
+      if (update) {
+        const shouldUpdate = window.confirm(
+          `Nueva versión disponible: v${update.version}\n\n¿Deseas descargar e instalar ahora?\nLa app se reiniciará automáticamente.`
+        );
+        if (shouldUpdate) {
+          await update.downloadAndInstall();
+          const { relaunch } = await import("@tauri-apps/plugin-process");
+          await relaunch();
+        }
+      } else {
+        alert("Estás en la última versión (v" + appVersion + ")");
+      }
+    } catch (e) {
+      alert("Error al buscar actualizaciones: " + e);
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const loadConfigs = async () => {
     try {
@@ -160,6 +185,9 @@ export default function Configuracion() {
         <div className="flex items-center gap-3">
           <h2 className="text-2xl font-bold text-gray-800">Configuración</h2>
           {appVersion && <span className="text-sm text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">v{appVersion}</span>}
+          <button onClick={checkForUpdate} disabled={checkingUpdate} className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 border border-blue-300 px-3 py-1 rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors">
+            <Download size={14} /> {checkingUpdate ? "Buscando..." : "Buscar actualizaciones"}
+          </button>
         </div>
         {!showForm && (
           <button onClick={openAdd} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
