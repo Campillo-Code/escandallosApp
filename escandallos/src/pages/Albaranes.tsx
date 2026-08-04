@@ -124,7 +124,7 @@ export default function Albaranes() {
 
   const loadDetalles = async (albaranId: number) => {
     try {
-      const data = await invoke<AlbaranDetalle[]>("get_albaran_detalles", { albaran_id: albaranId });
+      const data = await invoke<AlbaranDetalle[]>("get_albaran_detalles", { albaranId: albaranId });
       setDetalles(data);
     } catch (e) {
       console.error("Error loading detalles:", e);
@@ -233,7 +233,7 @@ export default function Albaranes() {
 
   const handleProcesar = async (id: number) => {
     try {
-      await invoke("procesar_albaran", { albaran_id: id });
+      await invoke("procesar_albaran", { albaranId: id });
       setSelectedAlbaran(null);
       setDetalles([]);
       loadAlbaranes();

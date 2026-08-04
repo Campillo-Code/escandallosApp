@@ -63,8 +63,8 @@ export default function FichasTecnicas() {
 
   useEffect(() => {
     if (selectedFicha) {
-      invoke<RecetaIngrediente[]>("get_receta_ingredientes", { receta_id: selectedFicha.receta_id }).then(setFichaIngredientes).catch(console.error);
-      invoke<string[]>("get_receta_alergenos", { receta_id: selectedFicha.receta_id }).then(setFichaAlergenos).catch(console.error);
+      invoke<RecetaIngrediente[]>("get_receta_ingredientes", { recetaId: selectedFicha.receta_id }).then(setFichaIngredientes).catch(console.error);
+      invoke<string[]>("get_receta_alergenos", { recetaId: selectedFicha.receta_id }).then(setFichaAlergenos).catch(console.error);
     }
   }, [selectedFicha]);
 

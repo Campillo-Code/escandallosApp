@@ -26,7 +26,7 @@ export default function MenuEngineering() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const result = await invoke<MenuItem[]>("get_menu_engineering", { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+      const result = await invoke<MenuItem[]>("get_menu_engineering", { fechaDesde: fechaDesde, fechaHasta: fechaHasta });
       setData(result);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }

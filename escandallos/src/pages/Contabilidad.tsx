@@ -33,7 +33,7 @@ export default function Contabilidad() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const result = await invoke<ContabilidadData>("get_contabilidad", { fecha_desde: fechaDesde, fecha_hasta: fechaHasta });
+      const result = await invoke<ContabilidadData>("get_contabilidad", { fechaDesde: fechaDesde, fechaHasta: fechaHasta });
       setData(result);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }

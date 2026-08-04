@@ -49,8 +49,8 @@ export default function Guarniciones() {
 
   const loadGuarniciones = async () => { try { setGuarniciones(await invoke("get_guarniciones")); } catch (e) { console.error(e); } finally { setLoading(false); } };
   const loadIngredientes = async () => { try { setIngredientes(await invoke("get_ingredientes")); } catch (e) { console.error(e); } };
-  const loadGuarnIngred = async (gid: number) => { try { setGuarnIngredientes(await invoke("get_guarnicion_ingredientes", { guarnicion_id: gid })); } catch (e) { console.error(e); } };
-  const loadCoste = async (gid: number) => { try { setCoste(await invoke("get_guarnicion_coste", { guarnicion_id: gid })); } catch (e) { console.error(e); } };
+  const loadGuarnIngred = async (gid: number) => { try { setGuarnIngredientes(await invoke("get_guarnicion_ingredientes", { guarnicionId: gid })); } catch (e) { console.error(e); } };
+  const loadCoste = async (gid: number) => { try { setCoste(await invoke("get_guarnicion_coste", { guarnicionId: gid })); } catch (e) { console.error(e); } };
 
   useEffect(() => { loadGuarniciones(); loadIngredientes(); }, []);
   useEffect(() => { if (selectedGuarnicion) { loadGuarnIngred(selectedGuarnicion.id); loadCoste(selectedGuarnicion.id); } }, [selectedGuarnicion]);

@@ -170,7 +170,7 @@ export default function Recetas() {
 
   const loadRecetaIngredientes = async (recetaId: number) => {
     try {
-      const data = await invoke<RecetaIngrediente[]>("get_receta_ingredientes", { receta_id: recetaId });
+      const data = await invoke<RecetaIngrediente[]>("get_receta_ingredientes", { recetaId: recetaId });
       setRecetaIngredientes(data);
       setIngredientesError("");
     } catch (e) {
@@ -181,7 +181,7 @@ export default function Recetas() {
 
   const loadCosteReceta = async (recetaId: number) => {
     try {
-      const data = await invoke<CosteReceta>("get_receta_coste", { receta_id: recetaId });
+      const data = await invoke<CosteReceta>("get_receta_coste", { recetaId: recetaId });
       setCosteReceta(data);
     } catch (e) {
       console.error("Error loading coste:", e);
@@ -190,7 +190,7 @@ export default function Recetas() {
 
   const loadAlergenosReceta = async (recetaId: number) => {
     try {
-      const data = await invoke<string[]>("get_receta_alergenos", { receta_id: recetaId });
+      const data = await invoke<string[]>("get_receta_alergenos", { recetaId: recetaId });
       setAlergenosReceta(data);
     } catch (e) {
       console.error("Error loading alérgenos:", e);
@@ -210,7 +210,7 @@ export default function Recetas() {
         const map: Record<number, string[]> = {};
         for (const r of recetas) {
           try {
-            const data = await invoke<string[]>("get_receta_alergenos", { receta_id: r.id });
+            const data = await invoke<string[]>("get_receta_alergenos", { recetaId: r.id });
             map[r.id] = data;
           } catch { /* ignore */ }
         }
@@ -226,7 +226,7 @@ export default function Recetas() {
       loadCosteReceta(selectedReceta.id);
       loadAlergenosReceta(selectedReceta.id);
       // Load guarniciones for this receta
-      invoke<RecetaGuarnicion[]>("get_receta_guarniciones", { receta_id: selectedReceta.id })
+      invoke<RecetaGuarnicion[]>("get_receta_guarniciones", { recetaId: selectedReceta.id })
         .then(setRecetaGuarniciones)
         .catch(console.error);
     }
@@ -238,7 +238,7 @@ export default function Recetas() {
         const costes: CosteGuarnicion[] = [];
         for (const rg of recetaGuarniciones) {
           try {
-            const c = await invoke<CosteGuarnicion>("get_guarnicion_coste", { guarnicion_id: rg.guarnicion_id });
+            const c = await invoke<CosteGuarnicion>("get_guarnicion_coste", { guarnicionId: rg.guarnicion_id });
             costes.push(c);
           } catch { /* ignore */ }
         }
@@ -281,7 +281,7 @@ export default function Recetas() {
     if (tipoIngrediente === "ingrediente" && !data.ingrediente_id) { alert("Selecciona un ingrediente"); return; }
     if (tipoIngrediente === "receta" && !data.sub_receta_id) { alert("Selecciona una receta base"); return; }
     const input = {
-      receta_id: selectedReceta.id,
+      recetaId: selectedReceta.id,
       ingrediente_id: tipoIngrediente === "ingrediente" ? parseInt(data.ingrediente_id!) : null,
       sub_receta_id: tipoIngrediente === "receta" ? parseInt(data.sub_receta_id!) : null,
       cantidad: parseFloat(data.cantidad),
@@ -780,7 +780,7 @@ export default function Recetas() {
                         try {
                           await invoke("add_receta_guarnicion", { input: { receta_id: selectedReceta.id, guarnicion_id: g.id } });
                           setShowGuarnForm(false);
-                          setRecetaGuarniciones(await invoke("get_receta_guarniciones", { receta_id: selectedReceta.id }));
+                          setRecetaGuarniciones(await invoke("get_receta_guarniciones", { recetaId: selectedReceta.id }));
                         } catch (e) { alert("Error: " + e); }
                       }}
                       className="text-left p-3 border border-gray-200 rounded-lg hover:bg-amber-50 hover:border-amber-300 transition-colors"
@@ -815,7 +815,7 @@ export default function Recetas() {
                             if (!confirm("¿Eliminar esta guarnición de la receta?")) return;
                             try {
                               await invoke("delete_receta_guarnicion", { id: rg.id });
-                              setRecetaGuarniciones(await invoke("get_receta_guarniciones", { receta_id: selectedReceta.id }));
+                              setRecetaGuarniciones(await invoke("get_receta_guarniciones", { recetaId: selectedReceta.id }));
                             } catch (e) { alert("Error: " + e); }
                           }}
                           className="text-red-600 hover:text-red-800"

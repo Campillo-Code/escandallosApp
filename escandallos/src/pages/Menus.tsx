@@ -99,7 +99,7 @@ export default function Menus() {
 
   const loadMenuRecetas = async (menuId: number) => {
     try {
-      const data = await invoke<MenuReceta[]>("get_menu_recetas", { menu_id: menuId });
+      const data = await invoke<MenuReceta[]>("get_menu_recetas", { menuId: menuId });
       setMenuRecetas(data);
     } catch (e) {
       console.error("Error loading menu recetas:", e);
@@ -108,7 +108,7 @@ export default function Menus() {
 
   const loadMenuAlergenos = async (menuId: number) => {
     try {
-      const data = await invoke<string[]>("get_menu_alergenos", { menu_id: menuId });
+      const data = await invoke<string[]>("get_menu_alergenos", { menuId: menuId });
       setMenuAlergenos(data);
     } catch (e) {
       console.error("Error loading menu alergenos:", e);

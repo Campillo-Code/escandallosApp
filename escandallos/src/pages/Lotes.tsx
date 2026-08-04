@@ -51,7 +51,7 @@ export default function Lotes() {
   const loadLotes = async () => {
     try {
       setError(null);
-      const result = await invoke<Lote[]>("get_lotes", { fecha_desde: fechaDesde || null, fecha_hasta: fechaHasta || null });
+      const result = await invoke<Lote[]>("get_lotes", { fechaDesde: fechaDesde || null, fechaHasta: fechaHasta || null });
       setLotes(result);
     } catch (e) { setError(String(e)); console.error(e); }
   };
