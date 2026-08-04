@@ -126,6 +126,7 @@ export default function Recetas() {
   const [showGuarnForm, setShowGuarnForm] = useState(false);
   const [recetasBase, setRecetasBase] = useState<Receta[]>([]);
   const [tipoIngrediente, setTipoIngrediente] = useState<"ingrediente" | "receta">("ingrediente");
+  const [ingredientesError, setIngredientesError] = useState("");
 
   const {
     register,
@@ -171,8 +172,10 @@ export default function Recetas() {
     try {
       const data = await invoke<RecetaIngrediente[]>("get_receta_ingredientes", { receta_id: recetaId });
       setRecetaIngredientes(data);
+      setIngredientesError("");
     } catch (e) {
       console.error("Error loading receta ingredientes:", e);
+      setIngredientesError(String(e));
     }
   };
 
@@ -523,8 +526,15 @@ export default function Recetas() {
         )}
 
         <div className="bg-white rounded-lg shadow overflow-hidden">
+          {ingredientesError && (
+            <div className="p-3 bg-red-50 border-b border-red-200 text-red-700 text-sm">
+              Error cargando ingredientes: {ingredientesError}
+            </div>
+          )}
           {recetaIngredientes.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">No hay ingredientes en este escandallo</div>
+            <div className="p-6 text-center text-gray-500">
+              {ingredientesError ? "Error al cargar ingredientes" : "No hay ingredientes en este escandallo"}
+            </div>
           ) : (
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">

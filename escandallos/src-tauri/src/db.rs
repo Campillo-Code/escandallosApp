@@ -125,7 +125,23 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE albaranes_detalle completed");
     }
 
-    // Ensure receta_ingredientes has 'orden' column
+    // Ensure receta_ingredientes table exists with correct structure
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS receta_ingredientes (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        receta_id INT NOT NULL,
+        ingrediente_id INT,
+        sub_receta_id INT,
+        cantidad DECIMAL(12,2) NOT NULL DEFAULT 0,
+        unidad VARCHAR(20) NOT NULL DEFAULT 'g',
+        merma_porcentaje DECIMAL(5,2) NOT NULL DEFAULT 0,
+        notas TEXT,
+        orden INT DEFAULT 0,
+        KEY idx_ri_receta (receta_id),
+        KEY idx_ri_ingrediente (ingrediente_id),
+        KEY idx_ri_subreceta (sub_receta_id)
+    )").execute(pool).await;
+
+    // Ensure orden column exists (for pre-existing tables)
     let check_orden: Option<(String,)> = sqlx::query_as(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'receta_ingredientes' AND COLUMN_NAME = 'orden'"
     ).fetch_optional(pool).await.unwrap_or(None);
@@ -133,6 +149,9 @@ async fn run_migrations(pool: &MySqlPool) {
         let _ = sqlx::query("ALTER TABLE receta_ingredientes ADD COLUMN orden INT DEFAULT 0").execute(pool).await;
         println!("ALTER TABLE receta_ingredientes ADD orden completed");
     }
+
+    // Fix NULL orden values for existing rows
+    let _ = sqlx::query("UPDATE receta_ingredientes SET orden = 0 WHERE orden IS NULL").execute(pool).await;
 
     // CAJA: Create caja_categorias table
     let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_categorias (
