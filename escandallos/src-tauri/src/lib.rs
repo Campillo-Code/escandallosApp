@@ -2307,6 +2307,7 @@ pub struct CajaTicket {
     pub total: f64,
     pub items: String,
     pub notas: Option<String>,
+    pub metodo_pago: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2314,6 +2315,7 @@ pub struct CajaTicketInput {
     pub items: Vec<CajaTicketItem>,
     pub total: f64,
     pub notas: Option<String>,
+    pub metodo_pago: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2381,11 +2383,11 @@ async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<Strin
     let pool = &db::get_pool();
     let rows: Vec<CajaTicket> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
         sqlx::query_as(
-            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas, metodo_pago FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
         ).bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
         sqlx::query_as(
-            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas FROM caja_tickets ORDER BY fecha DESC, hora DESC"
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas, metodo_pago FROM caja_tickets ORDER BY fecha DESC, hora DESC"
         ).fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
@@ -2400,10 +2402,10 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
     let items_json = serde_json::to_string(&input.items).map_err(|e| e.to_string())?;
 
     let result = sqlx::query(
-        "INSERT INTO caja_tickets (fecha, hora, total, items, notas) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO caja_tickets (fecha, hora, total, items, notas, metodo_pago) VALUES (?, ?, ?, ?, ?, ?)"
     )
     .bind(&fecha).bind(&hora).bind(input.total)
-    .bind(&items_json).bind(&input.notas)
+    .bind(&items_json).bind(&input.notas).bind(input.metodo_pago.as_deref().unwrap_or("efectivo"))
     .execute(pool).await.map_err(|e| e.to_string())?;
     let ticket_id = result.last_insert_id() as i64;
 
@@ -2424,7 +2426,7 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
 async fn delete_caja_ticket(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
     let ticket: Option<CajaTicket> = sqlx::query_as(
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas FROM caja_tickets WHERE id = ?"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas, metodo_pago FROM caja_tickets WHERE id = ?"
     ).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
     if let Some(t) = ticket {
         let items: Vec<CajaTicketItem> = serde_json::from_str(&t.items).unwrap_or_default();

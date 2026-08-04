@@ -33,6 +33,7 @@ interface CajaTicket {
   total: number;
   items: string;
   notas: string | null;
+  metodo_pago: string | null;
 }
 
 interface CajaResumen {
@@ -52,6 +53,7 @@ export default function Caja() {
   const [cantidad, setCantidad] = useState(1);
   const [usePlus, setUsePlus] = useState(false);
   const [notas, setNotas] = useState("");
+  const [metodoPago, setMetodoPago] = useState("efectivo");
   const [resumen, setResumen] = useState<CajaResumen | null>(null);
   const [ticketsHoy, setTicketsHoy] = useState<CajaTicket[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -80,15 +82,17 @@ export default function Caja() {
     try {
       const data = await invoke<CajaResumen>("get_caja_resumen", { fecha: null });
       setResumen(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("[Caja] Error cargando resumen:", e); }
   };
 
   const loadTicketsHoy = async () => {
     try {
       const hoy = getLocalDate();
+      console.log("[Caja] Cargando tickets del día:", hoy);
       const data = await invoke<CajaTicket[]>("get_caja_tickets", { fechaDesde: hoy, fechaHasta: hoy });
+      console.log("[Caja] Tickets obtenidos:", data.length, data);
       setTicketsHoy(data);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("[Caja] Error cargando tickets:", e); setError("Error cargando historial: " + String(e)); }
   };
 
   useEffect(() => {
@@ -184,14 +188,17 @@ export default function Caja() {
   const cobrar = async () => {
     if (ticket.length === 0) return;
     try {
+      console.log("[Caja] Cobrando:", { items: ticket, total: totalTicket, notas, metodoPago });
       await invoke("create_caja_ticket", {
-        input: { items: ticket, total: totalTicket, notas: notas || null }
+        input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: metodoPago }
       });
+      console.log("[Caja] Ticket creado OK");
       setTicket([]);
       setNotas("");
-      loadResumen();
-      loadTicketsHoy();
-    } catch (e) { setError(String(e)); }
+      setMetodoPago("efectivo");
+      await loadResumen();
+      await loadTicketsHoy();
+    } catch (e) { console.error("[Caja] Error cobrando:", e); setError(String(e)); }
   };
 
   const deleteTicket = async (id: number) => {
@@ -301,6 +308,25 @@ export default function Caja() {
               <input value={notas} onChange={(e) => setNotas(e.target.value)}
                 placeholder="Notas (opcional)"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            </div>
+            <div className="mb-3">
+              <label className="block text-xs text-gray-500 mb-1">Método de pago</label>
+              <div className="grid grid-cols-3 gap-1">
+                {[
+                  { id: "efectivo", label: "Efectivo" },
+                  { id: "tarjeta", label: "Tarjeta" },
+                  { id: "qr", label: "QR" },
+                ].map(m => (
+                  <button key={m.id} onClick={() => setMetodoPago(m.id)}
+                    className={`py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                      metodoPago === m.id
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+                    }`}>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <button onClick={cobrar} disabled={ticket.length === 0}
               className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-lg">
@@ -476,6 +502,15 @@ export default function Caja() {
                           <div>
                             <span className="text-sm text-gray-500">{ticket.hora}</span>
                             <span className="ml-2 font-bold text-lg">{ticket.total.toFixed(2)} €</span>
+                            {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
+                              <span className={`ml-2 inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                                ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :
+                                ticket.metodo_pago === "qr" ? "bg-cyan-100 text-cyan-700" :
+                                "bg-gray-100 text-gray-700"
+                              }`}>
+                                {ticket.metodo_pago === "tarjeta" ? "💳 Tarjeta" : ticket.metodo_pago === "qr" ? "📱 QR" : ticket.metodo_pago}
+                              </span>
+                            )}
                           </div>
                           <button onClick={() => setShowDeleteConfirm(ticket.id)}
                             className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar">

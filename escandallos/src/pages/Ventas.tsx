@@ -72,7 +72,7 @@ export default function Ventas() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Ventas</h2>
         <div className="flex gap-2">
-          <button onClick={() => setTab("historial")} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "historial" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Historial</button>
+          <button onClick={() => { if (tab !== "historial") setTab("historial"); setLoading(true); setTimeout(() => loadVentas(), 50); }} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "historial" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Historial</button>
           <button onClick={() => setTab("importar")} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "importar" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Importar CSV</button>
         </div>
       </div>

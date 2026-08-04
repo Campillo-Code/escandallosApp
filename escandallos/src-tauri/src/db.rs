@@ -171,6 +171,7 @@ async fn run_migrations(pool: &MySqlPool) {
         total DECIMAL(10,2) NOT NULL DEFAULT 0,
         items JSON NOT NULL,
         notas TEXT,
+        metodo_pago VARCHAR(20) DEFAULT 'efectivo',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY idx_caja_fecha (fecha)
     )").execute(pool).await;
@@ -216,6 +217,15 @@ async fn run_migrations(pool: &MySqlPool) {
         let _ = sqlx::query("ALTER TABLE caja_platos ADD COLUMN receta_id INT NULL AFTER categoria_id").execute(pool).await;
         let _ = sqlx::query("ALTER TABLE caja_platos ADD KEY idx_plato_receta (receta_id)").execute(pool).await;
         println!("ALTER TABLE caja_platos ADD receta_id completed");
+    }
+
+    // CAJA: Add metodo_pago to caja_tickets if not exists
+    let check_mp: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_tickets' AND COLUMN_NAME = 'metodo_pago'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_mp.is_none() {
+        let _ = sqlx::query("ALTER TABLE caja_tickets ADD COLUMN metodo_pago VARCHAR(20) DEFAULT 'efectivo' AFTER notas").execute(pool).await;
+        println!("ALTER TABLE caja_tickets ADD metodo_pago completed");
     }
 }
 
