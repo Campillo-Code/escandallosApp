@@ -17,6 +17,7 @@ import Lotes from "./pages/Lotes";
 import Produccion from "./pages/Produccion";
 import Caja from "./pages/Caja";
 import PreciosCaja from "./pages/PreciosCaja";
+import PlatosCaja from "./pages/PlatosCaja";
 
 
 interface SidebarLink {
@@ -82,7 +83,7 @@ function App() {
     sections.forEach((s) => {
       initial[s.id] = s.links.some((l) => location.pathname === l.to);
     });
-    initial["caja"] = location.pathname === "/caja" || location.pathname === "/precios-caja";
+    initial["caja"] = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja";
     return initial;
   });
 
@@ -116,7 +117,7 @@ function App() {
           {/* Caja */}
           {(() => {
             const isOpen = openSections["caja"];
-            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja";
+            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja";
             return (
               <div>
                 <button
@@ -145,6 +146,12 @@ function App() {
                           ? "bg-green-600 text-white"
                           : "text-slate-400 hover:bg-slate-700 hover:text-white"
                       }`}>Precios</a>
+                    <a href="/platos-caja"
+                      className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                        location.pathname === "/platos-caja"
+                          ? "bg-green-600 text-white"
+                          : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}>Platos</a>
                   </div>
                 )}
               </div>
@@ -217,6 +224,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/caja" element={<Caja />} />
           <Route path="/precios-caja" element={<PreciosCaja />} />
+          <Route path="/platos-caja" element={<PlatosCaja />} />
 
           <Route path="/escandallos" element={<Escandallos />} />
           <Route path="/ingredientes" element={<Ingredientes />} />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ShoppingCart, Trash2, X, Clock, TrendingUp, FileText } from "lucide-react";
 
@@ -9,6 +9,13 @@ interface CajaCategoria {
   plus: number;
   orden: number;
   activa: boolean;
+}
+
+interface PlatoCaja {
+  id: number;
+  categoria_id: number;
+  nombre: string;
+  activo: boolean;
 }
 
 interface TicketItem {
@@ -37,10 +44,11 @@ interface CajaResumen {
 
 export default function Caja() {
   const [categorias, setCategorias] = useState<CajaCategoria[]>([]);
+  const [platos, setPlatos] = useState<PlatoCaja[]>([]);
   const [ticket, setTicket] = useState<TicketItem[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCategoria, setSelectedCategoria] = useState<CajaCategoria | null>(null);
-  const [descripcion, setDescripcion] = useState("");
+  const [selectedPlato, setSelectedPlato] = useState("");
   const [cantidad, setCantidad] = useState(1);
   const [usePlus, setUsePlus] = useState(false);
   const [notas, setNotas] = useState("");
@@ -49,7 +57,12 @@ export default function Caja() {
   const [showHistory, setShowHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [error, setError] = useState("");
-  const descRef = useRef<HTMLInputElement>(null);
+
+  // Menu state
+  const [menuPrimero, setMenuPrimero] = useState("");
+  const [menuSegundo, setMenuSegundo] = useState("");
+  const [menuPostre, setMenuPostre] = useState("");
+  const [menuBebida, setMenuBebida] = useState("");
 
   const loadCategorias = async () => {
     try {
@@ -79,13 +92,26 @@ export default function Caja() {
     loadTicketsHoy();
   }, []);
 
+  const loadPlatos = async (catId: number) => {
+    try {
+      const data = await invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: catId });
+      setPlatos(data);
+    } catch (e) { console.error(e); }
+  };
+
+  const isMenu = (cat: CajaCategoria) => cat.nombre.toLowerCase().includes("men");
+
   const openAddModal = (cat: CajaCategoria) => {
     setSelectedCategoria(cat);
-    setDescripcion("");
+    setSelectedPlato("");
     setCantidad(1);
     setUsePlus(false);
+    setMenuPrimero("");
+    setMenuSegundo("");
+    setMenuPostre("");
+    setMenuBebida("");
     setShowAddModal(true);
-    setTimeout(() => descRef.current?.focus(), 100);
+    loadPlatos(cat.id);
   };
 
   const getPrecio = () => {
@@ -94,16 +120,53 @@ export default function Caja() {
   };
 
   const addItem = () => {
-    if (!selectedCategoria || !descripcion.trim()) return;
-    const precio = getPrecio();
-    const subtotal = precio * cantidad;
-    setTicket(prev => [...prev, {
-      categoria: selectedCategoria.nombre,
-      descripcion: descripcion.trim(),
-      cantidad,
-      precio_unitario: precio,
-      subtotal,
-    }]);
+    if (!selectedCategoria) return;
+
+    if (isMenu(selectedCategoria)) {
+      // Menú: add 4 items (primero, segundo, postre, optionally bebida)
+      const precio = selectedCategoria.precio;
+      const items: TicketItem[] = [];
+      const catName = selectedCategoria.nombre;
+
+      if (menuPrimero) {
+        const p = platos.find(p => p.id === Number(menuPrimero));
+        items.push({ categoria: catName, descripcion: `Primero: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+      }
+      if (menuSegundo) {
+        const p = platos.find(p => p.id === Number(menuSegundo));
+        items.push({ categoria: catName, descripcion: `Segundo: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+      }
+      if (menuPostre) {
+        const p = platos.find(p => p.id === Number(menuPostre));
+        items.push({ categoria: catName, descripcion: `Postre: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+      }
+      if (menuBebida) {
+        const p = platos.find(p => p.id === Number(menuBebida));
+        items.push({ categoria: catName, descripcion: `Bebida: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+      }
+
+      if (items.length === 0) return;
+
+      // First item gets the full price, rest are 0
+      items[0].precio_unitario = precio;
+      items[0].subtotal = precio;
+
+      setTicket(prev => [...prev, ...items]);
+    } else {
+      // Regular category
+      if (!selectedPlato) return;
+      const p = platos.find(p => p.id === Number(selectedPlato));
+      if (!p) return;
+      const precio = getPrecio();
+      const subtotal = precio * cantidad;
+      setTicket(prev => [...prev, {
+        categoria: selectedCategoria.nombre,
+        descripcion: p.nombre,
+        cantidad,
+        precio_unitario: precio,
+        subtotal,
+      }]);
+    }
     setShowAddModal(false);
   };
 
@@ -135,6 +198,12 @@ export default function Caja() {
     } catch (e) { setError(String(e)); }
   };
 
+  const getMenuPlatos = (catName: string) => {
+    const cat = categorias.find(c => c.nombre.toLowerCase().includes(catName.toLowerCase()));
+    if (!cat) return [];
+    return platos.filter(p => p.categoria_id === cat.id);
+  };
+
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-4">
@@ -155,7 +224,7 @@ export default function Caja() {
       )}
 
       <div className="flex-1 flex gap-4 min-h-0">
-        {/* Left: Categories + Add zone */}
+        {/* Left: Categories + Ticket items */}
         <div className="flex-1 flex flex-col gap-4">
           {/* Category buttons */}
           <div className="grid grid-cols-4 gap-2">
@@ -217,7 +286,6 @@ export default function Caja() {
 
         {/* Right: Ticket summary + Resumen */}
         <div className="w-80 flex flex-col gap-4">
-          {/* Ticket total */}
           <div className="bg-white rounded-xl border p-4">
             <div className="text-sm text-gray-500 mb-2">Ticket actual</div>
             <div className="flex justify-between items-baseline mb-3">
@@ -241,7 +309,6 @@ export default function Caja() {
             )}
           </div>
 
-          {/* Resumen del día */}
           {resumen && (
             <div className="bg-white rounded-xl border p-4 flex-1 overflow-auto">
               <div className="text-sm text-gray-500 mb-3 flex items-center gap-1"><TrendingUp size={14} /> Resumen hoy</div>
@@ -276,57 +343,105 @@ export default function Caja() {
       {/* Add item modal */}
       {showAddModal && selectedCategoria && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h2 className="text-lg font-semibold">{selectedCategoria.nombre}</h2>
               <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
             </div>
             <div className="p-6 space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">¿Qué plato/bebida?</label>
-                <input ref={descRef} value={descripcion} onChange={(e) => setDescripcion(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && descripcion.trim() && addItem()}
-                  placeholder="Ej: Tortilla de patatas"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-              </div>
+              {isMenu(selectedCategoria) ? (
+                <>
+                  <p className="text-sm text-gray-500">Selecciona los platos del menú:</p>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Primero *</label>
+                    <select value={menuPrimero} onChange={(e) => setMenuPrimero(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                      <option value="">Seleccionar...</option>
+                      {getMenuPlatos("primero").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Segundo *</label>
+                    <select value={menuSegundo} onChange={(e) => setMenuSegundo(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                      <option value="">Seleccionar...</option>
+                      {getMenuPlatos("segundo").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Postre *</label>
+                    <select value={menuPostre} onChange={(e) => setMenuPostre(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                      <option value="">Seleccionar...</option>
+                      {getMenuPlatos("postre").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Bebida (opcional)</label>
+                    <select value={menuBebida} onChange={(e) => setMenuBebida(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                      <option value="">Ninguna</option>
+                      {getMenuPlatos("bebida").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                  </div>
+                  <div className="text-right text-sm text-gray-500">
+                    Precio: <span className="font-bold text-gray-800">{selectedCategoria.precio.toFixed(2)} €</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Selecciona plato *</label>
+                    <select value={selectedPlato} onChange={(e) => setSelectedPlato(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                      <option value="">Seleccionar plato...</option>
+                      {platos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+                    </select>
+                    {platos.length === 0 && (
+                      <p className="text-xs text-orange-500 mt-1">No hay platos en esta categoría. Añádelos en Precios Caja → Platos.</p>
+                    )}
+                  </div>
 
-              {selectedCategoria.plus > 0 && (
-                <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                  <input type="checkbox" id="usePlus" checked={usePlus} onChange={(e) => setUsePlus(e.target.checked)}
-                    className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
-                  <label htmlFor="usePlus" className="text-sm">
-                    <span className="font-medium text-orange-800">Con Plus</span>
-                    <span className="text-orange-600 ml-1">(+{selectedCategoria.plus.toFixed(2)} €)</span>
-                  </label>
-                </div>
+                  {selectedCategoria.plus > 0 && (
+                    <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                      <input type="checkbox" id="usePlus" checked={usePlus} onChange={(e) => setUsePlus(e.target.checked)}
+                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
+                      <label htmlFor="usePlus" className="text-sm">
+                        <span className="font-medium text-orange-800">Con Plus</span>
+                        <span className="text-orange-600 ml-1">(+{selectedCategoria.plus.toFixed(2)} €)</span>
+                      </label>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                      <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                        <button onClick={() => setCantidad(Math.max(1, cantidad - 1))}
+                          className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">−</button>
+                        <span className="flex-1 text-center font-semibold text-lg">{cantidad}</span>
+                        <button onClick={() => setCantidad(cantidad + 1)}
+                          className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">+</button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                      <div className="flex items-center border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+                        <span className="font-mono font-bold text-lg text-blue-600">{getPrecio().toFixed(2)} €</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right text-sm text-gray-500">
+                    Subtotal: <span className="font-bold text-gray-800">{(getPrecio() * cantidad).toFixed(2)} €</span>
+                  </div>
+                </>
               )}
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                  <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                    <button onClick={() => setCantidad(Math.max(1, cantidad - 1))}
-                      className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">−</button>
-                    <span className="flex-1 text-center font-semibold text-lg">{cantidad}</span>
-                    <button onClick={() => setCantidad(cantidad + 1)}
-                      className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">+</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
-                  <div className="flex items-center border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
-                    <span className="font-mono font-bold text-lg text-blue-600">{getPrecio().toFixed(2)} €</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-right text-sm text-gray-500">
-                Subtotal: <span className="font-bold text-gray-800">{(getPrecio() * cantidad).toFixed(2)} €</span>
-              </div>
             </div>
             <div className="flex gap-3 justify-end px-6 py-4 border-t bg-gray-50 rounded-b-xl">
               <button onClick={() => setShowAddModal(false)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancelar</button>
-              <button onClick={addItem} disabled={!descripcion.trim()}
+              <button onClick={addItem}
+                disabled={isMenu(selectedCategoria) ? (!menuPrimero && !menuSegundo && !menuPostre) : !selectedPlato}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 font-medium">
                 Añadir
               </button>

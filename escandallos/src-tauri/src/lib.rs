@@ -2273,6 +2273,21 @@ pub struct CajaCategoriaInput {
     pub activa: Option<bool>,
 }
 
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct PlatoCaja {
+    pub id: i64,
+    pub categoria_id: i64,
+    pub nombre: String,
+    pub activo: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlatoCajaInput {
+    pub categoria_id: i64,
+    pub nombre: String,
+    pub activo: Option<bool>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CajaTicketItem {
     pub categoria: String,
@@ -2456,6 +2471,56 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
 }
 
 // ========================================
+// CAJA - PLATOS
+// ========================================
+
+#[tauri::command]
+async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
+        sqlx::query_as(
+            "SELECT id, categoria_id, nombre, activa AS activo FROM caja_platos WHERE categoria_id = ? AND activa = 1 ORDER BY nombre"
+        ).bind(cat_id).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as(
+            "SELECT id, categoria_id, nombre, activa AS activo FROM caja_platos WHERE activa = 1 ORDER BY categoria_id, nombre"
+        ).fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    let result = sqlx::query(
+        "INSERT INTO caja_platos (categoria_id, nombre, activo) VALUES (?, ?, ?)"
+    )
+    .bind(input.categoria_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
+#[tauri::command]
+async fn update_plato_caja(id: i64, input: PlatoCajaInput) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query(
+        "UPDATE caja_platos SET categoria_id = ?, nombre = ?, activa = ? WHERE id = ?"
+    )
+    .bind(input.categoria_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
+    .bind(id)
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_plato_caja(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM caja_platos WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ========================================
 // INICIO
 // ========================================
 
@@ -2576,6 +2641,10 @@ pub fn run() {
             create_caja_ticket,
             delete_caja_ticket,
             get_caja_resumen,
+            get_platos_caja,
+            create_plato_caja,
+            update_plato_caja,
+            delete_plato_caja,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

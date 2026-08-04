@@ -168,6 +168,15 @@ async fn run_migrations(pool: &MySqlPool) {
         }
         println!("Caja: default categories seeded");
     }
+
+    // CAJA: Create caja_platos table
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_platos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        categoria_id INT NOT NULL,
+        nombre VARCHAR(100) NOT NULL,
+        activo BOOLEAN DEFAULT TRUE,
+        KEY idx_plato_categoria (categoria_id)
+    )").execute(pool).await;
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {
