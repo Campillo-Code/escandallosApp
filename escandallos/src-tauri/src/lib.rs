@@ -290,7 +290,7 @@ pub struct RecetaIngredienteConNombre {
     pub unidad: String,
     pub merma_porcentaje: f64,
     pub notas: Option<String>,
-    pub orden: i32,
+    pub orden: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2472,10 +2472,17 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
     })
 }
 
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct RecetaBasic {
+    pub id: i64,
+    pub nombre: String,
+    pub categoria: Option<String>,
+}
+
 #[tauri::command]
-async fn get_recetas_basic() -> Result<Vec<(i64, String, Option<String>)>, String> {
+async fn get_recetas_basic() -> Result<Vec<RecetaBasic>, String> {
     let pool = &db::get_pool();
-    let rows: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+    let rows: Vec<RecetaBasic> = sqlx::query_as(
         "SELECT id, nombre, categoria FROM recetas ORDER BY categoria, nombre"
     ).fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)

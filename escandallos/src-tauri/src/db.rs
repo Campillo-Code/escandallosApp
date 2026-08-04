@@ -125,6 +125,15 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE albaranes_detalle completed");
     }
 
+    // Ensure receta_ingredientes has 'orden' column
+    let check_orden: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'receta_ingredientes' AND COLUMN_NAME = 'orden'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_orden.is_none() {
+        let _ = sqlx::query("ALTER TABLE receta_ingredientes ADD COLUMN orden INT DEFAULT 0").execute(pool).await;
+        println!("ALTER TABLE receta_ingredientes ADD orden completed");
+    }
+
     // CAJA: Create caja_categorias table
     let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_categorias (
         id INT AUTO_INCREMENT PRIMARY KEY,

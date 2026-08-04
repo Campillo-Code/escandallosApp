@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Pencil, Trash2, X, Save, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
 
 interface CajaCategoria {
   id: number;
@@ -110,7 +110,6 @@ export default function PreciosCaja() {
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500 w-10"></th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Precio base (€)</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Plus (€)</th>
@@ -121,7 +120,6 @@ export default function PreciosCaja() {
           <tbody className="divide-y">
             {categorias.map((cat) => (
               <tr key={cat.id} className={`hover:bg-gray-50 ${!cat.activa ? "opacity-50" : ""}`}>
-                <td className="px-4 py-3 text-gray-400"><GripVertical size={16} /></td>
                 <td className="px-4 py-3 font-medium text-gray-800">{cat.nombre}</td>
                 <td className="px-4 py-3 text-right font-mono">{cat.precio.toFixed(2)} €</td>
                 <td className="px-4 py-3 text-right font-mono">{cat.plus > 0 ? `+${cat.plus.toFixed(2)} €` : "—"}</td>
