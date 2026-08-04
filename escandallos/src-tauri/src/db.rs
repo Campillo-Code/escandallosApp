@@ -173,10 +173,22 @@ async fn run_migrations(pool: &MySqlPool) {
     let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_platos (
         id INT AUTO_INCREMENT PRIMARY KEY,
         categoria_id INT NOT NULL,
+        receta_id INT NULL,
         nombre VARCHAR(100) NOT NULL,
         activo BOOLEAN DEFAULT TRUE,
-        KEY idx_plato_categoria (categoria_id)
+        KEY idx_plato_categoria (categoria_id),
+        KEY idx_plato_receta (receta_id)
     )").execute(pool).await;
+
+    // CAJA: Add receta_id to caja_platos if not exists
+    let check_receta: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_platos' AND COLUMN_NAME = 'receta_id'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_receta.is_none() {
+        let _ = sqlx::query("ALTER TABLE caja_platos ADD COLUMN receta_id INT NULL AFTER categoria_id").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE caja_platos ADD KEY idx_plato_receta (receta_id)").execute(pool).await;
+        println!("ALTER TABLE caja_platos ADD receta_id completed");
+    }
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {

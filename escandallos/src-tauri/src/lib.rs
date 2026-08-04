@@ -2277,6 +2277,7 @@ pub struct CajaCategoriaInput {
 pub struct PlatoCaja {
     pub id: i64,
     pub categoria_id: i64,
+    pub receta_id: Option<i64>,
     pub nombre: String,
     pub activo: bool,
 }
@@ -2284,6 +2285,7 @@ pub struct PlatoCaja {
 #[derive(Debug, Deserialize)]
 pub struct PlatoCajaInput {
     pub categoria_id: i64,
+    pub receta_id: Option<i64>,
     pub nombre: String,
     pub activo: Option<bool>,
 }
@@ -2470,6 +2472,15 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
     })
 }
 
+#[tauri::command]
+async fn get_recetas_basic() -> Result<Vec<(i64, String, Option<String>)>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<(i64, String, Option<String>)> = sqlx::query_as(
+        "SELECT id, nombre, categoria FROM recetas ORDER BY categoria, nombre"
+    ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
 // ========================================
 // CAJA - PLATOS
 // ========================================
@@ -2479,11 +2490,11 @@ async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, St
     let pool = &db::get_pool();
     let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
         sqlx::query_as(
-            "SELECT id, categoria_id, nombre, activa AS activo FROM caja_platos WHERE categoria_id = ? AND activa = 1 ORDER BY nombre"
+            "SELECT id, categoria_id, receta_id, nombre, activo FROM caja_platos WHERE categoria_id = ? AND activo = 1 ORDER BY nombre"
         ).bind(cat_id).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
         sqlx::query_as(
-            "SELECT id, categoria_id, nombre, activa AS activo FROM caja_platos WHERE activa = 1 ORDER BY categoria_id, nombre"
+            "SELECT id, categoria_id, receta_id, nombre, activo FROM caja_platos WHERE activo = 1 ORDER BY categoria_id, nombre"
         ).fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
@@ -2493,9 +2504,9 @@ async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, St
 async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO caja_platos (categoria_id, nombre, activo) VALUES (?, ?, ?)"
+        "INSERT INTO caja_platos (categoria_id, receta_id, nombre, activo) VALUES (?, ?, ?, ?)"
     )
-    .bind(input.categoria_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
+    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
     .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(result.last_insert_id() as i64)
 }
@@ -2504,9 +2515,9 @@ async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
 async fn update_plato_caja(id: i64, input: PlatoCajaInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE caja_platos SET categoria_id = ?, nombre = ?, activa = ? WHERE id = ?"
+        "UPDATE caja_platos SET categoria_id = ?, receta_id = ?, nombre = ?, activo = ? WHERE id = ?"
     )
-    .bind(input.categoria_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
+    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
     .bind(id)
     .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -2645,6 +2656,7 @@ pub fn run() {
             create_plato_caja,
             update_plato_caja,
             delete_plato_caja,
+            get_recetas_basic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

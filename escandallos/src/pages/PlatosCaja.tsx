@@ -14,24 +14,39 @@ interface CajaCategoria {
 interface PlatoCaja {
   id: number;
   categoria_id: number;
+  receta_id: number | null;
   nombre: string;
   activo: boolean;
+}
+
+interface RecetaBasic {
+  id: number;
+  nombre: string;
+  categoria: string | null;
 }
 
 export default function PlatosCaja() {
   const [categorias, setCategorias] = useState<CajaCategoria[]>([]);
   const [platos, setPlatos] = useState<PlatoCaja[]>([]);
+  const [recetas, setRecetas] = useState<RecetaBasic[]>([]);
   const [selectedCat, setSelectedCat] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ categoria_id: 0, nombre: "", activo: true });
+  const [form, setForm] = useState({ categoria_id: 0, receta_id: null as number | null, nombre: "", activo: true });
   const [error, setError] = useState("");
 
   const loadCategorias = async () => {
     try {
       const data = await invoke<CajaCategoria[]>("get_caja_categorias");
       setCategorias(data.filter(c => c.activa));
+    } catch (e) { setError(String(e)); }
+  };
+
+  const loadRecetas = async () => {
+    try {
+      const data = await invoke<RecetaBasic[]>("get_recetas_basic");
+      setRecetas(data);
     } catch (e) { setError(String(e)); }
   };
 
@@ -42,23 +57,21 @@ export default function PlatosCaja() {
     } catch (e) { setError(String(e)); }
   };
 
-  useEffect(() => { loadCategorias(); }, []);
+  useEffect(() => { loadCategorias(); loadRecetas(); }, []);
 
-  useEffect(() => {
-    loadPlatos();
-  }, [selectedCat]);
+  useEffect(() => { loadPlatos(); }, [selectedCat]);
 
-  useEffect(() => { if (loading) setLoading(false); }, [categorias]);
+  useEffect(() => { if (loading && categorias.length > 0) setLoading(false); }, [categorias]);
 
   const handleNew = () => {
     setEditingId(null);
-    setForm({ categoria_id: selectedCat || (categorias[0]?.id ?? 0), nombre: "", activo: true });
+    setForm({ categoria_id: selectedCat || (categorias[0]?.id ?? 0), receta_id: null, nombre: "", activo: true });
     setShowForm(true);
   };
 
   const handleEdit = (plato: PlatoCaja) => {
     setEditingId(plato.id);
-    setForm({ categoria_id: plato.categoria_id, nombre: plato.nombre, activo: plato.activo });
+    setForm({ categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, activo: plato.activo });
     setShowForm(true);
   };
 
@@ -87,13 +100,21 @@ export default function PlatosCaja() {
     try {
       await invoke("update_plato_caja", {
         id: plato.id,
-        input: { categoria_id: plato.categoria_id, nombre: plato.nombre, activo: !plato.activo }
+        input: { categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, activo: !plato.activo }
       });
       loadPlatos();
     } catch (e) { setError(String(e)); }
   };
 
   const getCatName = (id: number) => categorias.find(c => c.id === id)?.nombre ?? "—";
+
+  // Group recetas by category
+  const recetasByCategoria = recetas.reduce((acc, r) => {
+    const cat = r.categoria || "Otros";
+    if (!acc[cat]) acc[cat] = [];
+    acc[cat].push(r);
+    return acc;
+  }, {} as Record<string, RecetaBasic[]>);
 
   if (loading) return <div className="p-6 text-center text-gray-500">Cargando...</div>;
 
@@ -114,7 +135,7 @@ export default function PlatosCaja() {
       )}
 
       <p className="text-sm text-gray-500 mb-4">
-        Gestiona los platos disponibles para cada categoría de la Caja.
+        Selecciona recetas de Escandallos y asígnalas a una categoría de la Caja.
       </p>
 
       {/* Category tabs */}
@@ -144,7 +165,7 @@ export default function PlatosCaja() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Plato</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría Caja</th>
               <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Activo</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Acciones</th>
             </tr>
@@ -192,7 +213,7 @@ export default function PlatosCaja() {
             </div>
             <div className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Categoría Caja *</label>
                 <select value={form.categoria_id} onChange={(e) => setForm({ ...form, categoria_id: Number(e.target.value) })}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                   <option value={0}>Seleccionar categoría...</option>
@@ -200,11 +221,30 @@ export default function PlatosCaja() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del plato *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Receta (Escandallos) *</label>
+                <select
+                  value={form.receta_id ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : null;
+                    const receta = recetas.find(r => r.id === id);
+                    setForm({ ...form, receta_id: id, nombre: receta?.nombre ?? form.nombre });
+                  }}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                  <option value="">Seleccionar receta...</option>
+                  {Object.entries(recetasByCategoria).map(([cat, items]) => (
+                    <optgroup key={cat} label={cat}>
+                      {items.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre (editable) *</label>
                 <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })}
                   onKeyDown={(e) => e.key === "Enter" && handleSave()}
-                  placeholder="Ej: Tortilla de patatas"
+                  placeholder="Nombre del plato"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                <p className="text-xs text-gray-400 mt-1">Se rellena automáticamente al seleccionar la receta</p>
               </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })}
