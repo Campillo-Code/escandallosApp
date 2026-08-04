@@ -125,6 +125,16 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE albaranes_detalle completed");
     }
 
+    // CAJA: Create caja_categorias table
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_categorias (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        nombre VARCHAR(50) NOT NULL,
+        precio DECIMAL(10,2) NOT NULL DEFAULT 0,
+        plus DECIMAL(10,2) NOT NULL DEFAULT 0,
+        orden INT DEFAULT 0,
+        activa BOOLEAN DEFAULT TRUE
+    )").execute(pool).await;
+
     // CAJA: Create caja_tickets table
     let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_tickets (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -132,19 +142,31 @@ async fn run_migrations(pool: &MySqlPool) {
         hora TIME NOT NULL,
         total DECIMAL(10,2) NOT NULL DEFAULT 0,
         items JSON NOT NULL,
-        tipo_venta VARCHAR(50),
         notas TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         KEY idx_caja_fecha (fecha)
     )").execute(pool).await;
 
-    // CAJA: Add codigo_caja to recetas if not exists
-    let check_codigo: Option<(String,)> = sqlx::query_as(
-        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recetas' AND COLUMN_NAME = 'codigo_caja'"
-    ).fetch_optional(pool).await.unwrap_or(None);
-    if check_codigo.is_none() {
-        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN codigo_caja VARCHAR(10) NULL AFTER margen_porcentaje").execute(pool).await;
-        println!("ALTER TABLE recetas ADD codigo_caja completed");
+    // CAJA: Seed default categories if empty
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM caja_categorias")
+        .fetch_one(pool).await.unwrap_or((0,));
+    if count.0 == 0 {
+        let defaults = vec![
+            ("Primero", 8.00, 0.00, 1),
+            ("Primero + Plus", 8.00, 2.50, 2),
+            ("Segundo", 9.00, 0.00, 3),
+            ("Segundo + Plus", 9.00, 2.50, 4),
+            ("Ración", 7.00, 0.00, 5),
+            ("Postre", 4.50, 0.00, 6),
+            ("Menú", 12.00, 0.00, 7),
+            ("Bebida", 2.00, 0.00, 8),
+        ];
+        for (nombre, precio, plus, orden) in defaults {
+            let _ = sqlx::query("INSERT INTO caja_categorias (nombre, precio, plus, orden) VALUES (?, ?, ?, ?)")
+                .bind(nombre).bind(precio).bind(plus).bind(orden)
+                .execute(pool).await;
+        }
+        println!("Caja: default categories seeded");
     }
 }
 

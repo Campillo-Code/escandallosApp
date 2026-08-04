@@ -59,7 +59,6 @@ pub struct Receta {
     pub es_base: bool,
     pub precio_venta: Option<f64>,
     pub margen_porcentaje: Option<f64>,
-    pub codigo_caja: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,7 +71,6 @@ pub struct RecetaInput {
     pub es_base: Option<bool>,
     pub precio_venta: Option<f64>,
     pub margen_porcentaje: Option<f64>,
-    pub codigo_caja: Option<String>,
 }
 
 // ========================================
@@ -204,7 +202,7 @@ async fn delete_ingrediente(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_recetas() -> Result<Vec<Receta>, String> {
     let pool = &db::get_pool();
-    let rows: Vec<Receta> = sqlx::query_as("SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, codigo_caja FROM recetas ORDER BY nombre")
+    let rows: Vec<Receta> = sqlx::query_as("SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas ORDER BY nombre")
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -215,7 +213,7 @@ async fn get_recetas() -> Result<Vec<Receta>, String> {
 async fn create_receta(input: RecetaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO recetas (nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, precio_venta, margen_porcentaje, codigo_caja) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO recetas (nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, precio_venta, margen_porcentaje) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&input.nombre)
     .bind(&input.descripcion)
@@ -225,7 +223,6 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
     .bind(input.es_base.unwrap_or(false))
     .bind(input.precio_venta)
     .bind(input.margen_porcentaje)
-    .bind(&input.codigo_caja)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -236,7 +233,7 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
 async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE recetas SET nombre = ?, descripcion = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, margen_porcentaje = ?, codigo_caja = ? WHERE id = ?"
+        "UPDATE recetas SET nombre = ?, descripcion = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, margen_porcentaje = ? WHERE id = ?"
     )
     .bind(&input.nombre)
     .bind(&input.descripcion)
@@ -246,7 +243,6 @@ async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
     .bind(input.es_base.unwrap_or(false))
     .bind(input.precio_venta)
     .bind(input.margen_porcentaje)
-    .bind(&input.codigo_caja)
     .bind(id)
     .execute(pool)
     .await
@@ -360,7 +356,7 @@ async fn delete_receta_ingrediente(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_recetas_base() -> Result<Vec<Receta>, String> {
     let pool = &db::get_pool();
-    let rows: Vec<Receta> = sqlx::query_as("SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, codigo_caja FROM recetas WHERE es_base = 1 ORDER BY nombre")
+    let rows: Vec<Receta> = sqlx::query_as("SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas WHERE es_base = 1 ORDER BY nombre")
         .fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
@@ -428,7 +424,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
     let pool = &db::get_pool();
 
     let receta: Receta = sqlx::query_as(
-        "SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, codigo_caja FROM recetas WHERE id = ?"
+        "SELECT id, nombre, descripcion, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas WHERE id = ?"
     )
     .bind(receta_id)
     .fetch_optional(pool)
@@ -2255,25 +2251,34 @@ async fn print_pdf_file(path: String, printer_name: Option<String>) -> Result<St
 }
 
 // ========================================
-// CAJA - CONTROL DE VENTAS
+// CAJA - SISTEMA DE VENTAS POR CATEGORÍA
 // ========================================
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ProductoCaja {
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct CajaCategoria {
     pub id: i64,
     pub nombre: String,
-    pub precio_venta: f64,
-    pub codigo_caja: Option<String>,
-    pub categoria: String,
-    pub tipo: String, // "receta" or "menu"
+    pub precio: f64,
+    pub plus: f64,
+    pub orden: i32,
+    pub activa: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CajaCategoriaInput {
+    pub nombre: String,
+    pub precio: f64,
+    pub plus: f64,
+    pub orden: Option<i32>,
+    pub activa: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CajaTicketItem {
-    pub receta_id: Option<i64>,
-    pub nombre: String,
+    pub categoria: String,
+    pub descripcion: String,
     pub cantidad: i64,
-    pub precio: f64,
+    pub precio_unitario: f64,
     pub subtotal: f64,
 }
 
@@ -2283,8 +2288,7 @@ pub struct CajaTicket {
     pub fecha: String,
     pub hora: String,
     pub total: f64,
-    pub items: String, // JSON string
-    pub tipo_venta: Option<String>,
+    pub items: String,
     pub notas: Option<String>,
 }
 
@@ -2292,7 +2296,6 @@ pub struct CajaTicket {
 pub struct CajaTicketInput {
     pub items: Vec<CajaTicketItem>,
     pub total: f64,
-    pub tipo_venta: Option<String>,
     pub notas: Option<String>,
 }
 
@@ -2312,45 +2315,63 @@ pub struct CajaCategoriaResumen {
 }
 
 #[tauri::command]
-async fn get_productos_caja() -> Result<Vec<ProductoCaja>, String> {
+async fn get_caja_categorias() -> Result<Vec<CajaCategoria>, String> {
     let pool = &db::get_pool();
-    let mut productos: Vec<ProductoCaja> = vec![];
-
-    // Recetas con precio de venta
-    let recetas: Vec<(i64, String, f64, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT id, nombre, COALESCE(precio_venta, 0), codigo_caja, categoria FROM recetas WHERE precio_venta IS NOT NULL AND precio_venta > 0 ORDER BY nombre"
+    let rows: Vec<CajaCategoria> = sqlx::query_as(
+        "SELECT id, nombre, CAST(precio AS DOUBLE) AS precio, CAST(plus AS DOUBLE) AS plus, orden, activa FROM caja_categorias ORDER BY orden, nombre"
     ).fetch_all(pool).await.map_err(|e| e.to_string())?;
-    for (id, nombre, precio, codigo, cat) in recetas {
-        productos.push(ProductoCaja {
-            id,
-            nombre,
-            precio_venta: precio,
-            codigo_caja: codigo,
-            categoria: cat.unwrap_or_else(|| "Platos".to_string()),
-            tipo: "receta".to_string(),
-        });
-    }
+    Ok(rows)
+}
 
-    // Menús activos
-    let menus: Vec<(i64, String, Option<String>, Option<String>)> = sqlx::query_as(
-        "SELECT m.id, m.nombre, m.tipo, m.descripcion FROM menus m WHERE m.activo = 1 ORDER BY m.nombre"
-    ).fetch_all(pool).await.map_err(|e| e.to_string())?;
-    for (id, nombre, tipo, _desc) in menus {
-        // Calcular precio total del menú sumando precio_venta de sus recetas
-        let precio: (f64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(COALESCE(mr.precio_venta, r.precio_venta, 0)), 0) FROM menu_recetas mr LEFT JOIN recetas r ON mr.receta_id = r.id WHERE mr.menu_id = ?"
-        ).bind(id).fetch_one(pool).await.map_err(|e| e.to_string())?;
-        productos.push(ProductoCaja {
-            id,
-            nombre,
-            precio_venta: precio.0,
-            codigo_caja: None,
-            categoria: tipo.unwrap_or_else(|| "Menú del Día".to_string()),
-            tipo: "menu".to_string(),
-        });
-    }
+#[tauri::command]
+async fn create_categoria_caja(input: CajaCategoriaInput) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    let max_orden: (Option<i32>,) = sqlx::query_as("SELECT MAX(orden) FROM caja_categorias")
+        .fetch_one(pool).await.map_err(|e| e.to_string())?;
+    let orden = input.orden.unwrap_or(max_orden.0.unwrap_or(0) + 1);
+    let result = sqlx::query(
+        "INSERT INTO caja_categorias (nombre, precio, plus, orden, activa) VALUES (?, ?, ?, ?, ?)"
+    )
+    .bind(&input.nombre).bind(input.precio).bind(input.plus)
+    .bind(orden).bind(input.activa.unwrap_or(true))
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
 
-    Ok(productos)
+#[tauri::command]
+async fn update_categoria_caja(id: i64, input: CajaCategoriaInput) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query(
+        "UPDATE caja_categorias SET nombre = ?, precio = ?, plus = ?, orden = ?, activa = ? WHERE id = ?"
+    )
+    .bind(&input.nombre).bind(input.precio).bind(input.plus)
+    .bind(input.orden.unwrap_or(0)).bind(input.activa.unwrap_or(true))
+    .bind(id)
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_categoria_caja(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM caja_categorias WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<CajaTicket>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<CajaTicket> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as(
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
+        ).bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as(
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas FROM caja_tickets ORDER BY fecha DESC, hora DESC"
+        ).fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
 }
 
 #[tauri::command]
@@ -2361,22 +2382,21 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
     let hora = now.format("%H:%M:%S").to_string();
     let items_json = serde_json::to_string(&input.items).map_err(|e| e.to_string())?;
 
-    // Insertar ticket
     let result = sqlx::query(
-        "INSERT INTO caja_tickets (fecha, hora, total, items, tipo_venta, notas) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO caja_tickets (fecha, hora, total, items, notas) VALUES (?, ?, ?, ?, ?)"
     )
     .bind(&fecha).bind(&hora).bind(input.total)
-    .bind(&items_json).bind(&input.tipo_venta).bind(&input.notas)
+    .bind(&items_json).bind(&input.notas)
     .execute(pool).await.map_err(|e| e.to_string())?;
     let ticket_id = result.last_insert_id() as i64;
 
-    // Insertar cada línea en ventas para que Menu Engineering lo recoja
     for item in &input.items {
+        let plato = format!("{} - {}", item.categoria, item.descripcion);
         sqlx::query(
             "INSERT INTO ventas (fecha, plato_nombre, cantidad, precio_unitario, total_venta) VALUES (?, ?, ?, ?, ?)"
         )
-        .bind(&fecha).bind(&item.nombre).bind(item.cantidad)
-        .bind(item.precio).bind(item.subtotal)
+        .bind(&fecha).bind(&plato).bind(item.cantidad)
+        .bind(item.precio_unitario).bind(item.subtotal)
         .execute(pool).await.map_err(|e| e.to_string())?;
     }
 
@@ -2384,37 +2404,22 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
 }
 
 #[tauri::command]
-async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<CajaTicket>, String> {
-    let pool = &db::get_pool();
-    let rows: Vec<CajaTicket> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
-        sqlx::query_as(
-            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, tipo_venta, notas FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
-        ).bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
-    } else {
-        sqlx::query_as(
-            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, tipo_venta, notas FROM caja_tickets ORDER BY fecha DESC, hora DESC"
-        ).fetch_all(pool).await.map_err(|e| e.to_string())?
-    };
-    Ok(rows)
-}
-
-#[tauri::command]
 async fn delete_caja_ticket(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
-    // Obtener el ticket para borrar sus ventas asociadas
     let ticket: Option<CajaTicket> = sqlx::query_as(
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, tipo_venta, notas FROM caja_tickets WHERE id = ?"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, hora, CAST(total AS DOUBLE) AS total, items, notas FROM caja_tickets WHERE id = ?"
     ).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
     if let Some(t) = ticket {
-        // Borrar ventas de ese día que coincidan con los nombres del ticket
         let items: Vec<CajaTicketItem> = serde_json::from_str(&t.items).unwrap_or_default();
         for item in &items {
+            let plato = format!("{} - {}", item.categoria, item.descripcion);
             sqlx::query("DELETE FROM ventas WHERE fecha = ? AND plato_nombre = ? AND cantidad = ? AND precio_unitario = ? LIMIT 1")
-                .bind(&t.fecha).bind(&item.nombre).bind(item.cantidad).bind(item.precio)
+                .bind(&t.fecha).bind(&plato).bind(item.cantidad).bind(item.precio_unitario)
                 .execute(pool).await.ok();
         }
     }
-    sqlx::query("DELETE FROM caja_tickets WHERE id = ?").bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM caja_tickets WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -2423,16 +2428,23 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
     let pool = &db::get_pool();
     let target_date = fecha.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
 
-    // Total y tickets
     let stats: (f64, i64) = sqlx::query_as(
         "SELECT COALESCE(SUM(total), 0), COUNT(*) FROM caja_tickets WHERE fecha = ?"
     ).bind(&target_date).fetch_one(pool).await.map_err(|e| e.to_string())?;
 
     let ticket_medio = if stats.1 > 0 { stats.0 / stats.1 as f64 } else { 0.0 };
 
-    // Desglose por categoría: agrupar ventas del día por tipo de venta del ticket
     let por_categoria: Vec<CajaCategoriaResumen> = sqlx::query_as(
-        "SELECT COALESCE(t.tipo_venta, 'Otros') AS categoria, SUM(t.total) AS total, COUNT(*) AS cantidad FROM caja_tickets t WHERE t.fecha = ? GROUP BY t.tipo_venta"
+        "SELECT sub.categoria, SUM(sub.subtotal) AS total, SUM(sub.cantidad) AS cantidad
+         FROM (
+             SELECT JSON_UNQUOTE(JSON_EXTRACT(item, '$.categoria')) AS categoria,
+                    JSON_UNQUOTE(JSON_EXTRACT(item, '$.cantidad')) AS cantidad,
+                    JSON_UNQUOTE(JSON_EXTRACT(item, '$.subtotal')) AS subtotal
+             FROM caja_tickets t,
+             JSON_TABLE(t.items, '$[*]' COLUMNS (item JSON PATH '$')) AS jt
+             WHERE t.fecha = ?
+         ) AS sub
+         GROUP BY sub.categoria"
     ).bind(&target_date).fetch_all(pool).await.map_err(|e| e.to_string())?;
 
     Ok(CajaResumen {
@@ -2556,9 +2568,12 @@ pub fn run() {
             get_etiqueta_data,
             get_printers,
             print_pdf_file,
-            get_productos_caja,
-            create_caja_ticket,
+            get_caja_categorias,
+            create_categoria_caja,
+            update_categoria_caja,
+            delete_categoria_caja,
             get_caja_tickets,
+            create_caja_ticket,
             delete_caja_ticket,
             get_caja_resumen,
         ])

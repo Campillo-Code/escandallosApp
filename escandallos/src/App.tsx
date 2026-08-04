@@ -16,6 +16,8 @@ import Configuracion from "./pages/Configuracion";
 import Lotes from "./pages/Lotes";
 import Produccion from "./pages/Produccion";
 import Caja from "./pages/Caja";
+import PreciosCaja from "./pages/PreciosCaja";
+
 
 interface SidebarLink {
   to: string;
@@ -80,6 +82,7 @@ function App() {
     sections.forEach((s) => {
       initial[s.id] = s.links.some((l) => location.pathname === l.to);
     });
+    initial["caja"] = location.pathname === "/caja" || location.pathname === "/precios-caja";
     return initial;
   });
 
@@ -109,16 +112,45 @@ function App() {
           >
             📊 Dashboard
           </a>
-          <a
-            href="/caja"
-            className={`block px-3 py-2 rounded transition-colors ${
-              location.pathname === "/caja"
-                ? "bg-green-600 text-white"
-                : "text-slate-300 hover:bg-slate-700 hover:text-white"
-            }`}
-          >
-            🛒 Caja
-          </a>
+
+          {/* Caja */}
+          {(() => {
+            const isOpen = openSections["caja"];
+            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja";
+            return (
+              <div>
+                <button
+                  onClick={() => toggleSection("caja")}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded transition-colors ${
+                    hasActive && !isOpen ? "text-white" : "text-slate-300 hover:bg-slate-700 hover:text-white"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🛒</span>
+                    <span className="font-medium">Caja</span>
+                  </span>
+                  {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {isOpen && (
+                  <div className="ml-4 space-y-0.5">
+                    <a href="/caja"
+                      className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                        location.pathname === "/caja"
+                          ? "bg-green-600 text-white"
+                          : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}>Terminal</a>
+                    <a href="/precios-caja"
+                      className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                        location.pathname === "/precios-caja"
+                          ? "bg-green-600 text-white"
+                          : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}>Precios</a>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
 
           {/* Sections */}
           {sections.map((section) => {
@@ -184,6 +216,8 @@ function App() {
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/caja" element={<Caja />} />
+          <Route path="/precios-caja" element={<PreciosCaja />} />
+
           <Route path="/escandallos" element={<Escandallos />} />
           <Route path="/ingredientes" element={<Ingredientes />} />
           <Route path="/proveedores" element={<Proveedores />} />
