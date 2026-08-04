@@ -30,6 +30,7 @@ interface Receta {
   es_base: boolean;
   precio_venta: number | null;
   margen_porcentaje: number | null;
+  codigo_caja: string | null;
 }
 
 interface RecetaIngrediente {

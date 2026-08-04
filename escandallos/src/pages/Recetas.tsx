@@ -16,6 +16,7 @@ const recetaSchema = z.object({
   es_base: z.boolean(),
   precio_venta: z.string().optional(),
   margen_porcentaje: z.string().optional(),
+  codigo_caja: z.string().optional(),
 });
 
 type RecetaFormData = z.infer<typeof recetaSchema>;
@@ -30,6 +31,7 @@ interface Receta {
   es_base: boolean;
   precio_venta: number | null;
   margen_porcentaje: number | null;
+  codigo_caja: string | null;
 }
 
 interface RecetaIngrediente {
@@ -248,6 +250,7 @@ export default function Recetas() {
         es_base: data.es_base,
         precio_venta: data.precio_venta ? parseFloat(data.precio_venta) : null,
         margen_porcentaje: data.margen_porcentaje ? parseFloat(data.margen_porcentaje) : null,
+        codigo_caja: data.codigo_caja || null,
       };
       if (editingId) {
         await invoke("update_receta", { id: editingId, input });
@@ -297,6 +300,7 @@ export default function Recetas() {
       es_base: r.es_base,
       precio_venta: r.precio_venta != null ? String(r.precio_venta) : "",
       margen_porcentaje: r.margen_porcentaje != null ? String(r.margen_porcentaje) : "",
+      codigo_caja: r.codigo_caja ?? "",
     });
     setShowForm(true);
   };
@@ -848,6 +852,16 @@ export default function Recetas() {
                 {...register("margen_porcentaje")}
                 placeholder="Ej: 70"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Código Caja (atajo)</label>
+              <input
+                type="text"
+                maxLength={10}
+                {...register("codigo_caja")}
+                placeholder="Ej: PA"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent uppercase"
               />
             </div>
             <div>

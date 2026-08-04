@@ -15,6 +15,7 @@ import Contabilidad from "./pages/Contabilidad";
 import Configuracion from "./pages/Configuracion";
 import Lotes from "./pages/Lotes";
 import Produccion from "./pages/Produccion";
+import Caja from "./pages/Caja";
 
 interface SidebarLink {
   to: string;
@@ -108,6 +109,16 @@ function App() {
           >
             📊 Dashboard
           </a>
+          <a
+            href="/caja"
+            className={`block px-3 py-2 rounded transition-colors ${
+              location.pathname === "/caja"
+                ? "bg-green-600 text-white"
+                : "text-slate-300 hover:bg-slate-700 hover:text-white"
+            }`}
+          >
+            🛒 Caja
+          </a>
 
           {/* Sections */}
           {sections.map((section) => {
@@ -172,6 +183,7 @@ function App() {
       <main className="flex-1 overflow-auto">
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/caja" element={<Caja />} />
           <Route path="/escandallos" element={<Escandallos />} />
           <Route path="/ingredientes" element={<Ingredientes />} />
           <Route path="/proveedores" element={<Proveedores />} />

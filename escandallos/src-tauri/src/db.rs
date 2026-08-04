@@ -127,6 +127,28 @@ async fn run_migrations(pool: &MySqlPool) {
         let _ = sqlx::query("ALTER TABLE albaranes_detalle ADD COLUMN fecha_caducidad DATE AFTER numero_lote").execute(pool).await;
         println!("ALTER TABLE albaranes_detalle completed");
     }
+
+    // CAJA: Create caja_tickets table
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS caja_tickets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        fecha DATE NOT NULL,
+        hora TIME NOT NULL,
+        total DECIMAL(10,2) NOT NULL DEFAULT 0,
+        items JSON NOT NULL,
+        tipo_venta VARCHAR(50),
+        notas TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_caja_fecha (fecha)
+    )").execute(pool).await;
+
+    // CAJA: Add codigo_caja to recetas if not exists
+    let check_codigo: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recetas' AND COLUMN_NAME = 'codigo_caja'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_codigo.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN codigo_caja VARCHAR(10) NULL AFTER margen_porcentaje").execute(pool).await;
+        println!("ALTER TABLE recetas ADD codigo_caja completed");
+    }
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {

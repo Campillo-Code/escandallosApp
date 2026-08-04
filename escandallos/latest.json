@@ -1,11 +1,11 @@
 {
-  "version": "0.4.9",
-  "notes": "Actualización a v0.4.9",
-  "pub_date": "2026-08-03T12:12:47Z",
+  "version": "0.5.0",
+  "notes": "Actualización a v0.5.0",
+  "pub_date": "2026-08-04T09:44:44Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSa214N2ZvSWhsK1FST2o4UVlRN1RnQ1RVZkd3R21iUmVMUnRQOThWUUxKcGE3YU14VDFia01tQkhiaWVnY2NHQzVwaTJLMHgzOGJRVzZIYmFUKzRjbmZoeEZaZ1lReVFFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1NzU5MTYxCWZpbGU6Y29uLXNhem9uLWdlc3Rpb25fMC40LjlfeDY0LXNldHVwLmV4ZQpMY0JMeTRCNVRpc2hJSE5FVGMyK0c4a3FtVlBrWitjVk9xaWZpMlcwQjNwd0FNemN3NHRMaXVhRHlQazAzTEJWaGY0OXdXZzRSSDY2TU9wbWo4dDhDQT09Cg==",
-      "url": "https://github.com/Campillo-Code/escandallosApp/releases/download/v0.4.9/con-sazon-gestion_0.4.9_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSa214N2ZvSWhsK1JVaCszR2JFVXBxSUpiSjZ2em9nU0EvWGhaOTZhY2IyS1dyVmk0NGphZndWditieGN2Q3dLNjZsMzNxcU43Qm9MMVNPY0dKakRoYUVoMVdiUTg0Z3cwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1ODM2Njc4CWZpbGU6Y29uLXNhem9uLWdlc3Rpb25fMC41LjBfeDY0LXNldHVwLmV4ZQpCSm1Cc3NTcFhtcGJJbnpTWjZRYmFxRmJ5Q0ZZczlKdVlzQU1ISmVMdVh2L2JTTGNPZGkwenRsZ1hGKzNlRWdIc0dsT0xtbE54VE1zSitkY053bmNEUT09Cg==",
+      "url": "https://github.com/Campillo-Code/escandallosApp/releases/download/v0.5.0/con-sazon-gestion_0.5.0_x64-setup.exe"
     }
   }
 }
