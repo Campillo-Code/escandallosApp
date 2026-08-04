@@ -1,4 +1,6 @@
-import { Routes, Route } from "react-router-dom";
+import { useState } from "react";
+import { Routes, Route, useLocation } from "react-router-dom";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import Proveedores from "./pages/Proveedores";
 import Ingredientes from "./pages/Ingredientes";
 import Escandallos from "./pages/Escandallos";
@@ -14,7 +16,78 @@ import Configuracion from "./pages/Configuracion";
 import Lotes from "./pages/Lotes";
 import Produccion from "./pages/Produccion";
 
+interface SidebarLink {
+  to: string;
+  label: string;
+  icon: string;
+}
+
+interface SidebarSection {
+  id: string;
+  title: string;
+  icon: string;
+  links: SidebarLink[];
+}
+
+const sections: SidebarSection[] = [
+  {
+    id: "carta",
+    title: "Carta",
+    icon: "🍽️",
+    links: [
+      { to: "/escandallos", label: "Escandallos", icon: "📋" },
+      { to: "/guarniciones", label: "Guarniciones", icon: "🥗" },
+      { to: "/fichas-tecnicas", label: "Fichas Técnicas", icon: "🧾" },
+    ],
+  },
+  {
+    id: "suministros",
+    title: "Suministros",
+    icon: "🚚",
+    links: [
+      { to: "/ingredientes", label: "Ingredientes", icon: "🥕" },
+      { to: "/proveedores", label: "Proveedores", icon: "🏭" },
+      { to: "/albaranes", label: "Albaranes", icon: "📄" },
+      { to: "/inventario", label: "Inventario", icon: "📦" },
+    ],
+  },
+  {
+    id: "negocio",
+    title: "Negocio",
+    icon: "💼",
+    links: [
+      { to: "/ventas", label: "Ventas", icon: "💰" },
+      { to: "/menu-engineering", label: "Menu Engineering", icon: "📈" },
+      { to: "/contabilidad", label: "Contabilidad", icon: "📉" },
+    ],
+  },
+  {
+    id: "trazabilidad",
+    title: "Trazabilidad",
+    icon: "🔍",
+    links: [
+      { to: "/lotes", label: "Lotes", icon: "🏷️" },
+      { to: "/produccion", label: "Producción", icon: "🏭" },
+    ],
+  },
+];
+
 function App() {
+  const location = useLocation();
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    sections.forEach((s) => {
+      initial[s.id] = s.links.some((l) => location.pathname === l.to);
+    });
+    return initial;
+  });
+
+  const toggleSection = (id: string) => {
+    setOpenSections((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const isActive = (to: string) => location.pathname === to;
+
   return (
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
@@ -23,51 +96,75 @@ function App() {
           <h1 className="text-xl font-bold">🍽️ Con Sazón_gestión</h1>
           <p className="text-xs text-slate-400 mt-1">Gestión de costes</p>
         </div>
-        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <a href="/" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto text-sm">
+          {/* Dashboard */}
+          <a
+            href="/"
+            className={`block px-3 py-2 rounded transition-colors ${
+              location.pathname === "/"
+                ? "bg-slate-600 text-white"
+                : "text-slate-300 hover:bg-slate-700 hover:text-white"
+            }`}
+          >
             📊 Dashboard
           </a>
-          <a href="/escandallos" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🍽️ Escandallos
-          </a>
-          <a href="/ingredientes" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🥕 Ingredientes
-          </a>
-          <a href="/proveedores" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🚚 Proveedores
-          </a>
-          <a href="/guarniciones" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🥗 Guarniciones
-          </a>
-          <a href="/albaranes" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            📄 Albaranes
-          </a>
-          <a href="/inventario" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            📦 Inventario
-          </a>
-          <a href="/fichas-tecnicas" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🧾 Fichas Técnicas
-          </a>
-          <a href="/ventas" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            💰 Ventas
-          </a>
-          <a href="/menu-engineering" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            📈 Menu Engineering
-          </a>
-          <a href="/contabilidad" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            📉 Contabilidad
-          </a>
-          <div className="border-t border-slate-700 my-2"></div>
-          <a href="/lotes" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🏷️ Lotes
-          </a>
-          <a href="/produccion" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            🏭 Producción
-          </a>
-          <div className="border-t border-slate-700 my-2"></div>
-          <a href="/configuracion" className="block px-3 py-2 rounded hover:bg-slate-700 transition-colors">
-            ⚙️ Configuración
-          </a>
+
+          {/* Sections */}
+          {sections.map((section) => {
+            const isOpen = openSections[section.id];
+            const hasActive = section.links.some((l) => location.pathname === l.to);
+            return (
+              <div key={section.id}>
+                <button
+                  onClick={() => toggleSection(section.id)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded transition-colors ${
+                    hasActive && !isOpen
+                      ? "text-white"
+                      : "text-slate-300 hover:bg-slate-700 hover:text-white"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>{section.icon}</span>
+                    <span className="font-medium">{section.title}</span>
+                  </span>
+                  <span className="text-slate-400">
+                    {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="ml-2 border-l border-slate-600 pl-2 mt-0.5 mb-1 space-y-0.5">
+                    {section.links.map((link) => (
+                      <a
+                        key={link.to}
+                        href={link.to}
+                        className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                          isActive(link.to)
+                            ? "bg-slate-600 text-white"
+                            : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                        }`}
+                      >
+                        {link.icon} {link.label}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Configuración */}
+          <div className="border-t border-slate-700 my-2 pt-2">
+            <a
+              href="/configuracion"
+              className={`block px-3 py-2 rounded transition-colors ${
+                location.pathname === "/configuracion"
+                  ? "bg-slate-600 text-white"
+                  : "text-slate-300 hover:bg-slate-700 hover:text-white"
+              }`}
+            >
+              ⚙️ Configuración
+            </a>
+          </div>
         </nav>
       </aside>
 
