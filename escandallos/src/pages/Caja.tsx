@@ -58,6 +58,11 @@ export default function Caja() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [error, setError] = useState("");
 
+  const getLocalDate = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  };
+
   // Menu state
   const [menuPrimero, setMenuPrimero] = useState("");
   const [menuSegundo, setMenuSegundo] = useState("");
@@ -80,9 +85,9 @@ export default function Caja() {
 
   const loadTicketsHoy = async () => {
     try {
-      const data = await invoke<CajaTicket[]>("get_caja_tickets", { fechaDesde: null, fechaHasta: null });
-      const hoy = new Date().toISOString().slice(0, 10);
-      setTicketsHoy(data.filter(t => t.fecha === hoy));
+      const hoy = getLocalDate();
+      const data = await invoke<CajaTicket[]>("get_caja_tickets", { fechaDesde: hoy, fechaHasta: hoy });
+      setTicketsHoy(data);
     } catch (e) { console.error(e); }
   };
 
