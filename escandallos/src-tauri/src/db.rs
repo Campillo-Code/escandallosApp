@@ -61,10 +61,7 @@ pub async fn init_db() -> Result<(), sqlx::Error> {
     };
     let pool = MySqlPool::connect(&url).await?;
     *DB_POOL.lock().unwrap() = Some(pool.clone());
-    // Migrations run after pool is set so the app works even if migrations are slow
-    tokio::spawn(async move {
-        run_migrations(&pool).await;
-    });
+    run_migrations(&pool).await;
     Ok(())
 }
 
@@ -155,9 +152,7 @@ pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {
     let url = build_url(config);
     let pool = MySqlPool::connect(&url).await?;
     *DB_POOL.lock().unwrap() = Some(pool.clone());
-    tokio::spawn(async move {
-        run_migrations(&pool).await;
-    });
+    run_migrations(&pool).await;
     Ok(())
 }
 
