@@ -1625,7 +1625,7 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
     for v in &ventas {
         // Try to find matching receta
         let receta: Option<(i64, f64, f64, f64)> = sqlx::query_as(
-            "SELECT r.id, CAST(r.precio_venta AS DOUBLE), COALESCE(r.margen_porcentaje, 50.0), 0.0 FROM recetas r WHERE r.nombre = ? LIMIT 1"
+            "SELECT r.id, CAST(r.precio_venta AS DOUBLE), COALESCE(r.margen_porcentaje, 50.0), 0.0 FROM recetas r WHERE r.nombre = SUBSTRING_INDEX(?, ' - ', -1) LIMIT 1"
         ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
         let (receta_id, precio_venta, margen_porcentaje, _coste) = receta.unwrap_or((0, 0.0, 50.0, 0.0));
@@ -1727,7 +1727,7 @@ async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<Strin
 
         // Try to get cost from receta
         let coste_result: Option<(f64,)> = sqlx::query_as(
-            "SELECT COALESCE(CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE), 0) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = ?"
+            "SELECT COALESCE(CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE), 0) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = SUBSTRING_INDEX(?, ' - ', -1)"
         ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
         let coste_porcion = coste_result.map(|t| t.0).unwrap_or(0.0);
