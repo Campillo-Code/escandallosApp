@@ -50,8 +50,8 @@ export default function Produccion() {
   const [form, setForm] = useState(emptyForm);
   const [detalles, setDetalles] = useState<DetalleLine[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fechaDesde, setFechaDesde] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); return d.toISOString().split("T")[0]; });
-  const [fechaHasta, setFechaHasta] = useState(() => new Date().toISOString().split("T")[0]);
+  const [fechaDesde, setFechaDesde] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
+  const [fechaHasta, setFechaHasta] = useState(() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
 

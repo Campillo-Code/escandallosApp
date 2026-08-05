@@ -1,17 +1,47 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Trash2 } from "lucide-react";
+import { Trash2, Download, ChevronDown, ChevronRight } from "lucide-react";
 import DateInput from "../components/DateInput";
 
 interface Venta { id: number; fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; }
 interface VentaCSVRow { fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; }
+
+interface TicketItem {
+  categoria: string;
+  descripcion: string;
+  cantidad: number;
+  precio_unitario: number;
+  subtotal: number;
+}
+
+interface CajaTicket {
+  id: number;
+  fecha: string;
+  hora: string;
+  total: number;
+  items: string;
+  notas: string | null;
+  metodo_pago: string | null;
+}
+
+function getLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export default function Ventas() {
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
-  const [tab, setTab] = useState<"historial" | "importar">("historial");
+  const [tab, setTab] = useState<"historial" | "tickets" | "importar">("historial");
+
+  // Tickets state
+  const [tickets, setTickets] = useState<CajaTicket[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [expandedTicket, setExpandedTicket] = useState<number | null>(null);
 
   // Import state
   const [csvText, setCsvText] = useState("");
@@ -28,7 +58,22 @@ export default function Ventas() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { loadVentas(); }, [fechaDesde, fechaHasta]);
+  const loadTickets = async () => {
+    setTicketsLoading(true);
+    try {
+      const data = await invoke<CajaTicket[]>("get_caja_tickets", {
+        fechaDesde: fechaDesde || null,
+        fechaHasta: fechaHasta || null,
+      });
+      setTickets(data);
+    } catch (e) { console.error(e); }
+    finally { setTicketsLoading(false); }
+  };
+
+  useEffect(() => {
+    if (tab === "historial") { setLoading(true); loadVentas(); }
+    if (tab === "tickets") { loadTickets(); }
+  }, [fechaDesde, fechaHasta, tab]);
 
   const parseCSV = () => {
     const lines = csvText.trim().split("\n");
@@ -64,19 +109,192 @@ export default function Ventas() {
     try { await invoke("delete_venta", { id }); loadVentas(); } catch (e) { alert("Error: " + e); }
   };
 
+  const exportCSV = () => {
+    const rows = tab === "tickets"
+      ? tickets.flatMap(t => {
+          const items: TicketItem[] = JSON.parse(t.items);
+          return items.map(item => ({
+            Fecha: t.fecha,
+            Hora: t.hora,
+            Categoria: item.categoria,
+            Plato: item.descripcion,
+            Cantidad: item.cantidad,
+            "Precio Unitario": item.precio_unitario.toFixed(2),
+            Subtotal: item.subtotal.toFixed(2),
+            "Método Pago": t.metodo_pago || "efectivo",
+          }));
+        })
+      : ventas.map(v => ({
+          Fecha: v.fecha,
+          Plato: v.plato_nombre,
+          Cantidad: v.cantidad,
+          "Precio Unitario": v.precio_unitario.toFixed(2),
+          Total: v.total_venta.toFixed(2),
+        }));
+    if (rows.length === 0) { alert("No hay datos para exportar"); return; }
+    const headers = Object.keys(rows[0]);
+    const csv = [headers.join(";"), ...rows.map(r => headers.map(h => String((r as Record<string, unknown>)[h])).join(";"))].join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `ventas_${getLocalDateStr(new Date())}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const totalVentas = ventas.reduce((s, v) => s + v.total_venta, 0);
   const totalUnidades = ventas.reduce((s, v) => s + v.cantidad, 0);
+  const totalTickets = tickets.reduce((s, t) => s + t.total, 0);
 
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Ventas</h2>
         <div className="flex gap-2">
-          <button onClick={() => { if (tab !== "historial") setTab("historial"); setLoading(true); setTimeout(() => loadVentas(), 50); }} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "historial" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Historial</button>
+          <button onClick={() => setTab("historial")} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "historial" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Líneas</button>
+          <button onClick={() => setTab("tickets")} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "tickets" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Tickets</button>
           <button onClick={() => setTab("importar")} className={`px-4 py-2 rounded-lg text-sm font-medium ${tab === "importar" ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>Importar CSV</button>
         </div>
       </div>
 
+      {/* Filters + Export (shared) */}
+      {tab !== "importar" && (
+        <div className="flex items-center gap-4 mb-4">
+          <DateInput value={fechaDesde} onChange={setFechaDesde} label="Desde" />
+          <DateInput value={fechaHasta} onChange={setFechaHasta} label="Hasta" />
+          {(fechaDesde || fechaHasta) && (
+            <button onClick={() => { setFechaDesde(""); setFechaHasta(""); }} className="text-sm text-blue-600 hover:underline mt-4">Limpiar filtros</button>
+          )}
+          <div className="ml-auto flex items-center gap-3">
+            {tab === "historial" && (
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-800">{totalVentas.toFixed(2)}€</span></p>
+                <p className="text-xs text-gray-400">{totalUnidades} unidades · {ventas.length} registros</p>
+              </div>
+            )}
+            {tab === "tickets" && (
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-800">{totalTickets.toFixed(2)}€</span></p>
+                <p className="text-xs text-gray-400">{tickets.length} tickets</p>
+              </div>
+            )}
+            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
+              <Download size={14} /> Exportar CSV
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Líneas de venta */}
+      {tab === "historial" && (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+            ventas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay ventas registradas</div> : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Plato</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio ud.</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Total</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {ventas.map(v => (
+                    <tr key={v.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-sm text-gray-600">{v.fecha}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{v.plato_nombre}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.cantidad}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.precio_unitario.toFixed(2)}€</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{v.total_venta.toFixed(2)}€</td>
+                      <td className="px-4 py-3 text-sm text-right">
+                        <button onClick={() => handleDelete(v.id)} className="text-red-600 hover:text-red-800"><Trash2 size={14} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+      )}
+
+      {/* Tab: Tickets */}
+      {tab === "tickets" && (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {ticketsLoading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+            tickets.length === 0 ? <div className="p-6 text-center text-gray-500">No hay tickets en este periodo</div> : (
+              <div className="divide-y divide-gray-200">
+                {tickets.map(ticket => {
+                  const items: TicketItem[] = JSON.parse(ticket.items);
+                  const isExpanded = expandedTicket === ticket.id;
+                  return (
+                    <div key={ticket.id}>
+                      <div
+                        onClick={() => setExpandedTicket(isExpanded ? null : ticket.id)}
+                        className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
+                        <span className="text-sm text-gray-500 w-20">{ticket.hora}</span>
+                        <span className="text-sm font-medium text-gray-800 flex-1">
+                          {items.length} artículo{items.length !== 1 ? "s" : ""}
+                          <span className="text-gray-400 ml-2 text-xs">
+                            {items.map(i => i.descripcion).join(", ").substring(0, 60)}{items.map(i => i.descripcion).join(", ").length > 60 ? "..." : ""}
+                          </span>
+                        </span>
+                        {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                            ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :
+                            ticket.metodo_pago === "qr" ? "bg-cyan-100 text-cyan-700" :
+                            "bg-gray-100 text-gray-700"
+                          }`}>
+                            {ticket.metodo_pago === "tarjeta" ? "💳" : ticket.metodo_pago === "qr" ? "📱" : ticket.metodo_pago}
+                          </span>
+                        )}
+                        <span className="font-bold text-gray-800 w-20 text-right">{ticket.total.toFixed(2)} €</span>
+                      </div>
+                      {isExpanded && (
+                        <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
+                          <table className="w-full ml-7">
+                            <thead>
+                              <tr className="text-xs text-gray-500">
+                                <th className="text-left pb-1 font-medium">Categoría</th>
+                                <th className="text-left pb-1 font-medium">Descripción</th>
+                                <th className="text-center pb-1 font-medium">Uds</th>
+                                <th className="text-right pb-1 font-medium">Precio</th>
+                                <th className="text-right pb-1 font-medium">Subtotal</th>
+                              </tr>
+                            </thead>
+                            <tbody className="text-sm">
+                              {items.map((item, i) => (
+                                <tr key={i} className="border-t border-gray-200">
+                                  <td className="py-1.5">
+                                    <span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{item.categoria}</span>
+                                  </td>
+                                  <td className="py-1.5 text-gray-800">{item.descripcion}</td>
+                                  <td className="py-1.5 text-center text-gray-600">{item.cantidad}</td>
+                                  <td className="py-1.5 text-right text-gray-600 font-mono">{item.precio_unitario.toFixed(2)} €</td>
+                                  <td className="py-1.5 text-right font-mono font-medium">{item.subtotal.toFixed(2)} €</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {ticket.notas && (
+                            <p className="ml-7 mt-2 text-xs text-gray-400 italic">📝 {ticket.notas}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+        </div>
+      )}
+
+      {/* Tab: Importar CSV */}
       {tab === "importar" && (
         <div className="bg-white rounded-lg shadow p-6 mb-6">
           <h3 className="text-lg font-semibold mb-4">Importar ventas desde TPV</h3>
@@ -141,54 +359,6 @@ export default function Ventas() {
             </div>
           )}
         </div>
-      )}
-
-      {tab === "historial" && (
-        <>
-          <div className="flex items-center gap-4 mb-4">
-            <DateInput value={fechaDesde} onChange={setFechaDesde} label="Desde" />
-            <DateInput value={fechaHasta} onChange={setFechaHasta} label="Hasta" />
-            {(fechaDesde || fechaHasta) && (
-              <button onClick={() => { setFechaDesde(""); setFechaHasta(""); }} className="text-sm text-blue-600 hover:underline mt-4">Limpiar filtros</button>
-            )}
-            <div className="ml-auto text-right">
-              <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-800">{totalVentas.toFixed(2)}€</span></p>
-              <p className="text-xs text-gray-400">{totalUnidades} unidades · {ventas.length} registros</p>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
-              ventas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay ventas registradas</div> : (
-                <table className="w-full">
-                  <thead className="bg-gray-50 border-b border-gray-200">
-                    <tr>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
-                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Plato</th>
-                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
-                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio ud.</th>
-                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Total</th>
-                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600"></th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {ventas.map(v => (
-                      <tr key={v.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-sm text-gray-600">{v.fecha}</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800">{v.plato_nombre}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.cantidad}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.precio_unitario.toFixed(2)}€</td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{v.total_venta.toFixed(2)}€</td>
-                        <td className="px-4 py-3 text-sm text-right">
-                          <button onClick={() => handleDelete(v.id)} className="text-red-600 hover:text-red-800"><Trash2 size={14} /></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-          </div>
-        </>
       )}
     </div>
   );
