@@ -27,15 +27,17 @@ interface ContabilidadData {
 export default function Contabilidad() {
   const [data, setData] = useState<ContabilidadData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [fechaDesde, setFechaDesde] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
   const [fechaHasta, setFechaHasta] = useState(() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
 
   const loadData = async () => {
     setLoading(true);
+    setError("");
     try {
       const result = await invoke<ContabilidadData>("get_contabilidad", { fechaDesde: fechaDesde, fechaHasta: fechaHasta });
       setData(result);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setError(String(e)); }
     finally { setLoading(false); }
   };
 
@@ -56,6 +58,8 @@ export default function Contabilidad() {
         <DateInput value={fechaDesde} onChange={setFechaDesde} label="Desde" />
         <DateInput value={fechaHasta} onChange={setFechaHasta} label="Hasta" />
       </div>
+
+      {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
       {loading ? <div className="text-center text-gray-500 py-12">Cargando datos...</div> :
         !data || data.desglose_por_plato.length === 0 ? (

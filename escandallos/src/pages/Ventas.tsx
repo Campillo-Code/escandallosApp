@@ -61,7 +61,7 @@ export default function Ventas() {
   const loadTickets = async () => {
     setTicketsLoading(true);
     try {
-      const data = await invoke<CajaTicket[]>("get_caja_tickets", {
+      const data = await invoke<CajaTicket[]>("get_caja_tickets_con_ventas", {
         fechaDesde: fechaDesde || null,
         fechaHasta: fechaHasta || null,
       });

@@ -1546,22 +1546,44 @@ async fn import_ventas(rows: Vec<VentaCSVRow>) -> Result<i64, String> {
 #[tauri::command]
 async fn delete_venta(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
-    // Check if this venta belongs to a caja_ticket
-    let venta: Option<(Option<i64>,)> = sqlx::query_as("SELECT ticket_id FROM ventas WHERE id = ?")
-        .bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
-    if let Some(row) = venta {
-        if let Some(ticket_id) = row.0 {
-            // Delete all sibling ventas from the same ticket
-            sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
-                .bind(ticket_id).execute(pool).await.map_err(|e| e.to_string())?;
-            // Delete the caja_ticket itself
-            sqlx::query("DELETE FROM caja_tickets WHERE id = ?")
-                .bind(ticket_id).execute(pool).await.map_err(|e| e.to_string())?;
-            return Ok(());
+    // Get the venta details before deleting
+    let venta: Option<(Option<i64>, String, String, i64, f64)> = sqlx::query_as(
+        "SELECT ticket_id, DATE_FORMAT(fecha, '%Y-%m-%d'), plato_nombre, cantidad, CAST(precio_unitario AS DOUBLE) FROM ventas WHERE id = ?"
+    ).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    
+    if let Some((Some(ticket_id), _, _, _, _)) = &venta {
+        // New style: has ticket_id → cascade delete
+        sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
+            .bind(ticket_id).execute(pool).await.map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM caja_tickets WHERE id = ?")
+            .bind(ticket_id).execute(pool).await.map_err(|e| e.to_string())?;
+    } else if let Some((_, ref fecha, ref plato_nombre, cantidad, precio)) = venta {
+        // Old style: no ticket_id → just delete the venta and try to find matching ticket
+        sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        // Try to find and delete the matching caja_ticket by matching items
+        let tickets: Vec<CajaTicket> = sqlx::query_as(
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets WHERE fecha = ?"
+        ).bind(fecha).fetch_all(pool).await.map_err(|e| e.to_string())?;
+        for t in &tickets {
+            let items: Vec<CajaTicketItem> = serde_json::from_str(&t.items).unwrap_or_default();
+            let ticket_item = items.iter().find(|i| {
+                let full_name = format!("{} - {}", i.categoria, i.descripcion);
+                full_name == *plato_nombre && i.cantidad == cantidad && (i.precio_unitario - precio).abs() < 0.01
+            });
+            if ticket_item.is_some() {
+                // This ticket contains this item - delete the whole ticket and its remaining ventas
+                sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
+                    .bind(t.id).execute(pool).await.ok();
+                sqlx::query("DELETE FROM caja_tickets WHERE id = ?")
+                    .bind(t.id).execute(pool).await.ok();
+                break;
+            }
         }
+    } else {
+        sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
+            .execute(pool).await.map_err(|e| e.to_string())?;
     }
-    sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
-        .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -2408,6 +2430,21 @@ async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<Strin
 }
 
 #[tauri::command]
+async fn get_caja_tickets_con_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<CajaTicket>, String> {
+    let pool = &db::get_pool();
+    let rows: Vec<CajaTicket> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
+        sqlx::query_as(
+            "SELECT DISTINCT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t INNER JOIN ventas v ON v.ticket_id = t.id WHERE t.fecha BETWEEN ? AND ? ORDER BY t.fecha DESC, t.hora DESC"
+        ).bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as(
+            "SELECT DISTINCT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t INNER JOIN ventas v ON v.ticket_id = t.id ORDER BY t.fecha DESC, t.hora DESC"
+        ).fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
 async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let now = chrono::Local::now();
@@ -2676,6 +2713,7 @@ pub fn run() {
             update_categoria_caja,
             delete_categoria_caja,
             get_caja_tickets,
+            get_caja_tickets_con_ventas,
             create_caja_ticket,
             delete_caja_ticket,
             get_caja_resumen,

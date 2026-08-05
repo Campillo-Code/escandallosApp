@@ -20,15 +20,17 @@ const LABELS: Record<string, string> = { estrella: "⭐ Estrella", vaca: "🐄 V
 export default function MenuEngineering() {
   const [data, setData] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [fechaDesde, setFechaDesde] = useState(() => { const d = new Date(); d.setMonth(d.getMonth() - 1); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
   const [fechaHasta, setFechaHasta] = useState(() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
 
   const loadData = async () => {
     setLoading(true);
+    setError("");
     try {
       const result = await invoke<MenuItem[]>("get_menu_engineering", { fechaDesde: fechaDesde, fechaHasta: fechaHasta });
       setData(result);
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error(e); setError(String(e)); }
     finally { setLoading(false); }
   };
 
@@ -82,6 +84,8 @@ export default function MenuEngineering() {
           <p className="text-xs text-gray-400">Bajo margen + Baja popularidad</p>
         </div>
       </div>
+
+      {error && <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>}
 
       {loading ? (
         <div className="text-center text-gray-500 py-12">Cargando datos...</div>
