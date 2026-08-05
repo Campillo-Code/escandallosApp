@@ -1633,7 +1633,7 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
         // Calculate cost from receta if available
         let coste_porcion: f64 = if receta_id > 0 {
             let coste_result: Option<(f64,)> = sqlx::query_as(
-                "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / r.porciones AS DOUBLE) AS coste_porcion FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE ri.receta_id = ?"
+                "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE) AS coste_porcion FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE ri.receta_id = ?"
             ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
             coste_result.map(|c| c.0).unwrap_or(0.0)
         } else {
@@ -1727,7 +1727,7 @@ async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<Strin
 
         // Try to get cost from receta
         let coste_result: Option<(f64,)> = sqlx::query_as(
-            "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / r.porciones AS DOUBLE) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = ?"
+            "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = ?"
         ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
         let coste_porcion = coste_result.map(|t| t.0).unwrap_or(0.0);
@@ -2410,11 +2410,11 @@ async fn get_caja_tickets_con_ventas(fecha_desde: Option<String>, fecha_hasta: O
     // Show tickets that either have linked ventas (ticket_id) or have matching ventas by date+name
     let rows: Vec<CajaTicket> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
         sqlx::query_as(
-            "SELECT DISTINCT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t WHERE t.fecha BETWEEN ? AND ? AND (EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) OR EXISTS (SELECT 1 FROM ventas v WHERE v.fecha = t.fecha)) ORDER BY t.fecha DESC, t.hora DESC"
+            "SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t WHERE t.fecha BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) ORDER BY fecha DESC, hora DESC"
         ).bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
         sqlx::query_as(
-            "SELECT DISTINCT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t WHERE (EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) OR EXISTS (SELECT 1 FROM ventas v WHERE v.fecha = t.fecha)) ORDER BY t.fecha DESC, t.hora DESC"
+            "SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t WHERE EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) ORDER BY fecha DESC, hora DESC"
         ).fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
@@ -2488,8 +2488,8 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
         "SELECT sub.categoria, CAST(SUM(sub.subtotal) AS DOUBLE) AS total, CAST(SUM(sub.cantidad) AS SIGNED) AS cantidad
          FROM (
              SELECT JSON_UNQUOTE(JSON_EXTRACT(item, '$.categoria')) AS categoria,
-                    JSON_UNQUOTE(JSON_EXTRACT(item, '$.cantidad')) AS cantidad,
-                    JSON_UNQUOTE(JSON_EXTRACT(item, '$.subtotal')) AS subtotal
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(item, '$.cantidad')) AS UNSIGNED) AS cantidad,
+                    CAST(JSON_UNQUOTE(JSON_EXTRACT(item, '$.subtotal')) AS DOUBLE) AS subtotal
              FROM caja_tickets t,
              JSON_TABLE(t.items, '$[*]' COLUMNS (item JSON PATH '$')) AS jt
              WHERE t.fecha = ?

@@ -82,7 +82,10 @@ export default function Caja() {
     try {
       const data = await invoke<CajaResumen>("get_caja_resumen", { fecha: null });
       setResumen(data);
-    } catch (e) { console.error("[Caja] Error cargando resumen:", e); }
+    } catch (e) {
+      console.error("[Caja] Error cargando resumen:", e);
+      setError("Error resumen: " + String(e));
+    }
   };
 
   const loadTicketsHoy = async () => {
