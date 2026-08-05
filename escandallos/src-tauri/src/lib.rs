@@ -1633,7 +1633,7 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
         // Calculate cost from receta if available
         let coste_porcion: f64 = if receta_id > 0 {
             let coste_result: Option<(f64,)> = sqlx::query_as(
-                "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE) AS coste_porcion FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE ri.receta_id = ?"
+                "SELECT COALESCE(CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE), 0) AS coste_porcion FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE ri.receta_id = ?"
             ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
             coste_result.map(|c| c.0).unwrap_or(0.0)
         } else {
@@ -1727,7 +1727,7 @@ async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<Strin
 
         // Try to get cost from receta
         let coste_result: Option<(f64,)> = sqlx::query_as(
-            "SELECT CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = ?"
+            "SELECT COALESCE(CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE), 0) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = ?"
         ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
         let coste_porcion = coste_result.map(|t| t.0).unwrap_or(0.0);
@@ -2487,7 +2487,7 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
     let por_categoria: Vec<CajaCategoriaResumen> = sqlx::query_as(
         "SELECT sub.categoria, CAST(SUM(sub.subtotal) AS DOUBLE) AS total, CAST(SUM(sub.cantidad) AS SIGNED) AS cantidad
          FROM (
-             SELECT JSON_UNQUOTE(JSON_EXTRACT(item, '$.categoria')) AS categoria,
+             SELECT CAST(JSON_UNQUOTE(JSON_EXTRACT(item, '$.categoria')) AS CHAR) AS categoria,
                     CAST(JSON_UNQUOTE(JSON_EXTRACT(item, '$.cantidad')) AS UNSIGNED) AS cantidad,
                     CAST(JSON_UNQUOTE(JSON_EXTRACT(item, '$.subtotal')) AS DOUBLE) AS subtotal
              FROM caja_tickets t,
