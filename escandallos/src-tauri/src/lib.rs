@@ -2383,11 +2383,11 @@ async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<Strin
     let pool = &db::get_pool();
     let rows: Vec<CajaTicket> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
         sqlx::query_as(
-            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, items, notas, metodo_pago FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
         ).bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
         sqlx::query_as(
-            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, items, notas, metodo_pago FROM caja_tickets ORDER BY fecha DESC, hora DESC"
+            "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets ORDER BY fecha DESC, hora DESC"
         ).fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
@@ -2426,7 +2426,7 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
 async fn delete_caja_ticket(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
     let ticket: Option<CajaTicket> = sqlx::query_as(
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, items, notas, metodo_pago FROM caja_tickets WHERE id = ?"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets WHERE id = ?"
     ).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
     if let Some(t) = ticket {
         let items: Vec<CajaTicketItem> = serde_json::from_str(&t.items).unwrap_or_default();
