@@ -227,6 +227,15 @@ async fn run_migrations(pool: &MySqlPool) {
         let _ = sqlx::query("ALTER TABLE caja_tickets ADD COLUMN metodo_pago VARCHAR(20) DEFAULT 'efectivo' AFTER notas").execute(pool).await;
         println!("ALTER TABLE caja_tickets ADD metodo_pago completed");
     }
+
+    // VENTAS: Add ticket_id to link ventas to caja_tickets
+    let check_tid: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ventas' AND COLUMN_NAME = 'ticket_id'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_tid.is_none() {
+        let _ = sqlx::query("ALTER TABLE ventas ADD COLUMN ticket_id INT NULL AFTER id").execute(pool).await;
+        println!("ALTER TABLE ventas ADD ticket_id completed");
+    }
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {

@@ -1546,6 +1546,20 @@ async fn import_ventas(rows: Vec<VentaCSVRow>) -> Result<i64, String> {
 #[tauri::command]
 async fn delete_venta(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
+    // Check if this venta belongs to a caja_ticket
+    let venta: Option<(Option<i64>,)> = sqlx::query_as("SELECT ticket_id FROM ventas WHERE id = ?")
+        .bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    if let Some(row) = venta {
+        if let Some(ticket_id) = row.0 {
+            // Delete all sibling ventas from the same ticket
+            sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
+                .bind(ticket_id).execute(pool).await.map_err(|e| e.to_string())?;
+            // Delete the caja_ticket itself
+            sqlx::query("DELETE FROM caja_tickets WHERE id = ?")
+                .bind(ticket_id).execute(pool).await.map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+    }
     sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -2412,9 +2426,9 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
     for item in &input.items {
         let plato = format!("{} - {}", item.categoria, item.descripcion);
         sqlx::query(
-            "INSERT INTO ventas (fecha, plato_nombre, cantidad, precio_unitario, total_venta) VALUES (?, ?, ?, ?, ?)"
+            "INSERT INTO ventas (ticket_id, fecha, plato_nombre, cantidad, precio_unitario, total_venta) VALUES (?, ?, ?, ?, ?, ?)"
         )
-        .bind(&fecha).bind(&plato).bind(item.cantidad)
+        .bind(ticket_id).bind(&fecha).bind(&plato).bind(item.cantidad)
         .bind(item.precio_unitario).bind(item.subtotal)
         .execute(pool).await.map_err(|e| e.to_string())?;
     }
@@ -2425,6 +2439,10 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
 #[tauri::command]
 async fn delete_caja_ticket(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
+    // Delete all linked ventas first
+    sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
+        .bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    // Also delete any orphaned ventas from old tickets (no ticket_id) by matching
     let ticket: Option<CajaTicket> = sqlx::query_as(
         "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets WHERE id = ?"
     ).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
@@ -2432,8 +2450,8 @@ async fn delete_caja_ticket(id: i64) -> Result<(), String> {
         let items: Vec<CajaTicketItem> = serde_json::from_str(&t.items).unwrap_or_default();
         for item in &items {
             let plato = format!("{} - {}", item.categoria, item.descripcion);
-            sqlx::query("DELETE FROM ventas WHERE fecha = ? AND plato_nombre = ? AND cantidad = ? AND precio_unitario = ? LIMIT 1")
-                .bind(&t.fecha).bind(&plato).bind(item.cantidad).bind(item.precio_unitario)
+            sqlx::query("DELETE FROM ventas WHERE fecha = ? AND plato_nombre = ? AND cantidad = ? AND precio_unitario = ? AND (ticket_id IS NULL OR ticket_id != ?) LIMIT 1")
+                .bind(&t.fecha).bind(&plato).bind(item.cantidad).bind(item.precio_unitario).bind(id)
                 .execute(pool).await.ok();
         }
     }

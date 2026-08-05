@@ -223,7 +223,7 @@ export default function Ventas() {
 
       {/* Tab: Tickets */}
       {tab === "tickets" && (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-white rounded-lg shadow">
           {ticketsLoading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
             tickets.length === 0 ? <div className="p-6 text-center text-gray-500">No hay tickets en este periodo</div> : (
               <div className="divide-y divide-gray-200">
@@ -236,16 +236,16 @@ export default function Ventas() {
                         onClick={() => setExpandedTicket(isExpanded ? null : ticket.id)}
                         className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer transition-colors"
                       >
-                        {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
-                        <span className="text-sm text-gray-500 w-20">{ticket.hora}</span>
-                        <span className="text-sm font-medium text-gray-800 flex-1">
+                        {isExpanded ? <ChevronDown size={16} className="text-gray-400 shrink-0" /> : <ChevronRight size={16} className="text-gray-400 shrink-0" />}
+                        <span className="text-sm text-gray-500 w-20 shrink-0">{ticket.hora}</span>
+                        <span className="text-sm font-medium text-gray-800 flex-1 min-w-0 truncate">
                           {items.length} artículo{items.length !== 1 ? "s" : ""}
                           <span className="text-gray-400 ml-2 text-xs">
                             {items.map(i => i.descripcion).join(", ").substring(0, 60)}{items.map(i => i.descripcion).join(", ").length > 60 ? "..." : ""}
                           </span>
                         </span>
                         {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
-                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
                             ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :
                             ticket.metodo_pago === "qr" ? "bg-cyan-100 text-cyan-700" :
                             "bg-gray-100 text-gray-700"
@@ -253,11 +253,11 @@ export default function Ventas() {
                             {ticket.metodo_pago === "tarjeta" ? "💳" : ticket.metodo_pago === "qr" ? "📱" : ticket.metodo_pago}
                           </span>
                         )}
-                        <span className="font-bold text-gray-800 w-20 text-right">{ticket.total.toFixed(2)} €</span>
+                        <span className="font-bold text-gray-800 w-20 text-right shrink-0">{ticket.total.toFixed(2)} €</span>
                       </div>
                       {isExpanded && (
-                        <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
-                          <table className="w-full ml-7">
+                        <div className="bg-gray-50 px-4 py-3 border-t border-gray-100 overflow-x-auto">
+                          <table className="w-full ml-7" style={{ maxWidth: "calc(100% - 28px)" }}>
                             <thead>
                               <tr className="text-xs text-gray-500">
                                 <th className="text-left pb-1 font-medium">Categoría</th>
