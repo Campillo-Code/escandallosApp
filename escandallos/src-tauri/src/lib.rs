@@ -1573,10 +1573,10 @@ pub struct VentaPorPlato {
 async fn get_ventas_por_plato(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<VentaPorPlato>, String> {
     let pool = &db::get_pool();
     let rows: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
-        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
             .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
-        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas GROUP BY plato_nombre ORDER BY total_ingresos DESC")
             .fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
@@ -1604,10 +1604,10 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
 
     // Get sales per dish
     let ventas: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
-        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre")
+        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre")
             .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
-        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas GROUP BY plato_nombre")
+        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas GROUP BY plato_nombre")
             .fetch_all(pool).await.map_err(|e| e.to_string())?
     };
 
@@ -1701,10 +1701,10 @@ async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<Strin
     let pool = &db::get_pool();
 
     let ventas_por_plato: Vec<VentaPorPlato> = if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
-        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre ORDER BY total_ingresos DESC")
             .bind(desde).bind(hasta).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
-        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, SUM(total_venta) AS total_ingresos FROM ventas GROUP BY plato_nombre ORDER BY total_ingresos DESC")
+        sqlx::query_as("SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas GROUP BY plato_nombre ORDER BY total_ingresos DESC")
             .fetch_all(pool).await.map_err(|e| e.to_string())?
     };
 
@@ -2479,13 +2479,13 @@ async fn get_caja_resumen(fecha: Option<String>) -> Result<CajaResumen, String> 
     let target_date = fecha.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
 
     let stats: (f64, i64) = sqlx::query_as(
-        "SELECT COALESCE(SUM(total), 0), COUNT(*) FROM caja_tickets WHERE fecha = ?"
+        "SELECT CAST(COALESCE(SUM(total), 0) AS DOUBLE), COUNT(*) FROM caja_tickets WHERE fecha = ?"
     ).bind(&target_date).fetch_one(pool).await.map_err(|e| e.to_string())?;
 
     let ticket_medio = if stats.1 > 0 { stats.0 / stats.1 as f64 } else { 0.0 };
 
     let por_categoria: Vec<CajaCategoriaResumen> = sqlx::query_as(
-        "SELECT sub.categoria, SUM(sub.subtotal) AS total, SUM(sub.cantidad) AS cantidad
+        "SELECT sub.categoria, CAST(SUM(sub.subtotal) AS DOUBLE) AS total, CAST(SUM(sub.cantidad) AS SIGNED) AS cantidad
          FROM (
              SELECT JSON_UNQUOTE(JSON_EXTRACT(item, '$.categoria')) AS categoria,
                     JSON_UNQUOTE(JSON_EXTRACT(item, '$.cantidad')) AS cantidad,

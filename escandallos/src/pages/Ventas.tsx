@@ -41,6 +41,7 @@ export default function Ventas() {
   // Tickets state
   const [tickets, setTickets] = useState<CajaTicket[]>([]);
   const [ticketsLoading, setTicketsLoading] = useState(false);
+  const [ticketsError, setTicketsError] = useState<string | null>(null);
   const [expandedTicket, setExpandedTicket] = useState<number | null>(null);
 
   // Import state
@@ -60,13 +61,19 @@ export default function Ventas() {
 
   const loadTickets = async () => {
     setTicketsLoading(true);
+    setTicketsError(null);
     try {
+      console.log("Loading tickets with dates:", fechaDesde || null, fechaHasta || null);
       const data = await invoke<CajaTicket[]>("get_caja_tickets_con_ventas", {
         fechaDesde: fechaDesde || null,
         fechaHasta: fechaHasta || null,
       });
+      console.log("Tickets loaded:", data.length, data);
       setTickets(data);
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error("Error loading tickets:", e);
+      setTicketsError(String(e));
+    }
     finally { setTicketsLoading(false); }
   };
 
@@ -225,6 +232,7 @@ export default function Ventas() {
       {tab === "tickets" && (
         <div className="bg-white rounded-lg shadow">
           {ticketsLoading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+            ticketsError ? <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm m-4">{ticketsError}</div> :
             tickets.length === 0 ? <div className="p-6 text-center text-gray-500">No hay tickets en este periodo</div> : (
               <div className="divide-y divide-gray-200">
                 {tickets.map(ticket => {
