@@ -268,7 +268,7 @@ export default function Recetas() {
     try {
       await invoke("add_receta_ingrediente", {
         input: {
-          recetaId: selectedReceta.id,
+          receta_id: selectedReceta.id,
           ingrediente_id: parseInt(data.ingrediente_id),
           sub_receta_id: null,
           cantidad: parseFloat(data.cantidad),

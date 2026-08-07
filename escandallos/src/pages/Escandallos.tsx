@@ -281,7 +281,7 @@ export default function Recetas() {
     if (tipoIngrediente === "ingrediente" && !data.ingrediente_id) { alert("Selecciona un ingrediente"); return; }
     if (tipoIngrediente === "receta" && !data.sub_receta_id) { alert("Selecciona una receta base"); return; }
     const input = {
-      recetaId: selectedReceta.id,
+      receta_id: selectedReceta.id,
       ingrediente_id: tipoIngrediente === "ingrediente" ? parseInt(data.ingrediente_id!) : null,
       sub_receta_id: tipoIngrediente === "receta" ? parseInt(data.sub_receta_id!) : null,
       cantidad: parseFloat(data.cantidad),
