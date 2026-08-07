@@ -12,6 +12,7 @@ const ingredienteSchema = z.object({
   unidad_base: z.string().min(1, "La unidad es obligatoria"),
   categoria: z.string().optional(),
   alergenos: z.string().optional(),
+  precio: z.string().optional(),
 });
 
 type IngredienteFormData = z.infer<typeof ingredienteSchema>;
@@ -85,6 +86,7 @@ export default function Ingredientes() {
       const input = {
         ...data,
         alergenos: serializeAlergenos(selectedAlergenos),
+        precio: data.precio ? parseFloat(data.precio) : null,
       };
       if (editingId) {
         await invoke("update_ingrediente", { id: editingId, input });
@@ -110,6 +112,7 @@ export default function Ingredientes() {
       unidad_base: ing.unidad_base,
       categoria: ing.categoria ?? "",
       alergenos: ing.alergenos ?? "",
+      precio: ing.precio != null ? String(ing.precio) : "",
     });
     setShowForm(true);
   };
@@ -284,6 +287,19 @@ export default function Ingredientes() {
                   placeholder="Carnes, Pescados..."
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Precio por unidad base (€)</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  {...register("precio")}
+                  placeholder="Ej: 2.50"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-400 mt-1">Se actualiza también con albaranes</p>
               </div>
             </div>
 

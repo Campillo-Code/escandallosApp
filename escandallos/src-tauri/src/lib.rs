@@ -46,6 +46,7 @@ pub struct IngredienteInput {
     pub unidad_base: String,
     pub categoria: Option<String>,
     pub alergenos: Option<String>,
+    pub precio: Option<f64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -164,7 +165,25 @@ async fn create_ingrediente(input: IngredienteInput) -> Result<i64, String> {
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
-    Ok(result.last_insert_id() as i64)
+    let ingrediente_id = result.last_insert_id() as i64;
+
+    if let Some(precio) = input.precio {
+        if precio > 0.0 {
+            let existing: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1"
+            ).bind(ingrediente_id).fetch_optional(pool).await.ok().flatten();
+            if let Some((prec_id,)) = existing {
+                sqlx::query("UPDATE ingrediente_precios SET precio_por_unidad_base = ? WHERE id = ?")
+                    .bind(precio).bind(prec_id).execute(pool).await.ok();
+            } else {
+                sqlx::query(
+                    "INSERT INTO ingrediente_precios (ingrediente_id, proveedor_id, precio, cantidad, unidad, precio_por_unidad_base, es_predeterminado) SELECT ?, id, ?, 1, ?, ?, 1 FROM proveedores LIMIT 1"
+                ).bind(ingrediente_id).bind(precio).bind(&input.unidad_base).bind(precio).execute(pool).await.ok();
+            }
+        }
+    }
+
+    Ok(ingrediente_id)
 }
 
 #[tauri::command]
@@ -181,6 +200,23 @@ async fn update_ingrediente(id: i64, input: IngredienteInput) -> Result<(), Stri
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
+
+    if let Some(precio) = input.precio {
+        if precio > 0.0 {
+            let existing: Option<(i64,)> = sqlx::query_as(
+                "SELECT id FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1"
+            ).bind(id).fetch_optional(pool).await.ok().flatten();
+            if let Some((prec_id,)) = existing {
+                sqlx::query("UPDATE ingrediente_precios SET precio_por_unidad_base = ? WHERE id = ?")
+                    .bind(precio).bind(prec_id).execute(pool).await.ok();
+            } else {
+                sqlx::query(
+                    "INSERT INTO ingrediente_precios (ingrediente_id, proveedor_id, precio, cantidad, unidad, precio_por_unidad_base, es_predeterminado) SELECT ?, id, ?, 1, ?, ?, 1 FROM proveedores LIMIT 1"
+                ).bind(id).bind(precio).bind(&input.unidad_base).bind(precio).execute(pool).await.ok();
+            }
+        }
+    }
+
     Ok(())
 }
 
