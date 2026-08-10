@@ -10,6 +10,10 @@ import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 const recetaSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
   descripcion: z.string().optional(),
+  elaboracion: z.string().optional(),
+  conservacion: z.string().optional(),
+  regeneracion: z.string().optional(),
+  vida_util: z.string().optional(),
   categoria: z.string().optional(),
   porciones: z.string().min(1, "Mínimo 1 porción"),
   tiempo_preparacion: z.string().optional(),
@@ -24,6 +28,10 @@ interface Receta {
   id: number;
   nombre: string;
   descripcion: string | null;
+  elaboracion: string | null;
+  conservacion: string | null;
+  regeneracion: string | null;
+  vida_util: string | null;
   categoria: string | null;
   porciones: number;
   tiempo_preparacion: number | null;
@@ -233,6 +241,13 @@ export default function Recetas() {
   }, [selectedReceta]);
 
   useEffect(() => {
+    if (showForm && editingId) {
+      loadRecetaIngredientes(editingId);
+      loadCosteReceta(editingId);
+    }
+  }, [showForm, editingId]);
+
+  useEffect(() => {
     if (recetaGuarniciones.length > 0) {
       const loadAll = async () => {
         const costes: CosteGuarnicion[] = [];
@@ -255,6 +270,10 @@ export default function Recetas() {
       const input = {
         nombre: data.nombre,
         descripcion: data.descripcion || null,
+        elaboracion: data.elaboracion || null,
+        conservacion: data.conservacion || null,
+        regeneracion: data.regeneracion || null,
+        vida_util: data.vida_util || null,
         categoria: data.categoria || null,
         porciones: parseInt(data.porciones) || 1,
         tiempo_preparacion: data.tiempo_preparacion ? parseInt(data.tiempo_preparacion) : null,
@@ -264,24 +283,27 @@ export default function Recetas() {
       };
       if (editingId) {
         await invoke("update_receta", { id: editingId, input });
+        setShowForm(false);
+        setEditingId(null);
+        reset();
+        loadRecetas();
       } else {
-        await invoke("create_receta", { input });
+        const newId = await invoke<number>("create_receta", { input });
+        setEditingId(newId);
+        loadRecetas();
       }
-      setShowForm(false);
-      setEditingId(null);
-      reset();
-      loadRecetas();
     } catch (e) {
       console.error("Error saving receta:", e);
     }
   };
 
   const onSubmitIngrediente = async (data: IngredienteRecetaFormData) => {
-    if (!selectedReceta) return;
+    const recetaId = editingId || selectedReceta?.id;
+    if (!recetaId) return;
     if (tipoIngrediente === "ingrediente" && !data.ingrediente_id) { alert("Selecciona un ingrediente"); return; }
     if (tipoIngrediente === "receta" && !data.sub_receta_id) { alert("Selecciona una receta base"); return; }
     const input = {
-      receta_id: selectedReceta.id,
+      receta_id: recetaId,
       ingrediente_id: tipoIngrediente === "ingrediente" ? parseInt(data.ingrediente_id!) : null,
       sub_receta_id: tipoIngrediente === "receta" ? parseInt(data.sub_receta_id!) : null,
       cantidad: parseFloat(data.cantidad),
@@ -296,8 +318,8 @@ export default function Recetas() {
       setShowIngredienteForm(false);
       resetIng({ merma_porcentaje: "0" });
       setTipoIngrediente("ingrediente");
-      loadRecetaIngredientes(selectedReceta.id);
-      loadCosteReceta(selectedReceta.id);
+      loadRecetaIngredientes(recetaId);
+      loadCosteReceta(recetaId);
     } catch (e) {
       console.error("Error adding ingrediente:", e);
       alert("Error: " + e);
@@ -309,6 +331,10 @@ export default function Recetas() {
     reset({
       nombre: r.nombre,
       descripcion: r.descripcion ?? "",
+      elaboracion: r.elaboracion ?? "",
+      conservacion: r.conservacion ?? "",
+      regeneracion: r.regeneracion ?? "",
+      vida_util: r.vida_util ?? "",
       categoria: r.categoria ?? "",
       porciones: String(r.porciones),
       tiempo_preparacion: r.tiempo_preparacion != null ? String(r.tiempo_preparacion) : "",
@@ -335,11 +361,12 @@ export default function Recetas() {
 
   const handleDeleteIngrediente = async (id: number) => {
     if (!confirm("¿Eliminar este ingrediente del escandallo?")) return;
+    const recetaId = editingId || selectedReceta?.id;
     try {
       await invoke("delete_receta_ingrediente", { id });
-      if (selectedReceta) {
-        loadRecetaIngredientes(selectedReceta.id);
-        loadCosteReceta(selectedReceta.id);
+      if (recetaId) {
+        loadRecetaIngredientes(recetaId);
+        loadCosteReceta(recetaId);
       }
     } catch (e) {
       console.error("Error deleting ingrediente:", e);
@@ -347,10 +374,349 @@ export default function Recetas() {
   };
 
   const handleCancel = () => {
+    const currentId = editingId;
     setShowForm(false);
     setEditingId(null);
     reset();
+    setRecetaIngredientes([]);
+    setCosteReceta(null);
+    setShowIngredienteForm(false);
+    // If we were editing or just created, go back to detail view
+    if (currentId && selectedReceta) {
+      loadRecetaIngredientes(selectedReceta.id);
+      loadCosteReceta(selectedReceta.id);
+    } else if (currentId) {
+      // Just created a new recipe — navigate to its detail
+      invoke<Receta[]>("get_recetas").then(recetas => {
+        const found = recetas.find(r => r.id === currentId);
+        if (found) setSelectedReceta(found);
+      }).catch(console.error);
+    }
   };
+
+  if (showForm) {
+    return (
+      <div className="p-6">
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">
+              {editingId ? "Editar Escandallo" : "Nuevo Escandallo"}
+            </h3>
+            <button onClick={handleCancel} className="text-gray-400 hover:text-gray-600">
+              <X size={20} />
+            </button>
+          </div>
+          <form onSubmit={handleSubmit(onSubmitReceta)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+              <input
+                {...register("nombre")}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {errors.nombre && <p className="text-red-500 text-sm mt-1">{errors.nombre.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+              <input
+                {...register("categoria")}
+                placeholder="Ej: Postres, Primer plato..."
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Porciones *</label>
+              <input
+                type="number"
+                min="1"
+                {...register("porciones")}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              {errors.porciones && <p className="text-red-500 text-sm mt-1">{errors.porciones.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tiempo (min)</label>
+              <input
+                type="number"
+                min="0"
+                {...register("tiempo_preparacion")}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Elaboración</label>
+              <textarea
+                {...register("elaboracion")}
+                rows={3}
+                placeholder="Explicación de cómo se hace el plato"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Conservación</label>
+              <input
+                {...register("conservacion")}
+                placeholder="Ej: Conservar entre 0 y 4 °C"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Regeneración</label>
+              <input
+                {...register("regeneracion")}
+                placeholder="Ej: Calentar 3 min en microondas"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vida útil</label>
+              <input
+                {...register("vida_util")}
+                placeholder="Ej: Consumir antes de 48h"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta actual por porción (€)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                {...register("precio_venta")}
+                placeholder="0.00"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Margen objetivo mínimo (%)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="99"
+                {...register("margen_porcentaje")}
+                placeholder="Ej: 70"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">&nbsp;</label>
+              <label className="flex items-center gap-2 h-[42px]">
+                <input
+                  type="checkbox"
+                  {...register("es_base")}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Escandallo base</span>
+              </label>
+            </div>
+            <div className="md:col-span-2 flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={handleCancel}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+              >
+                {isSubmitting ? "Guardando..." : editingId ? "Guardar cambios" : "Crear escandallo"}
+              </button>
+            </div>
+          </form>
+
+          {editingId && (
+            <div className="border-t border-gray-200 pt-4 mt-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Ingredientes</h3>
+              {!showIngredienteForm && (
+                <button
+                  onClick={() => { resetIng(); setShowIngredienteForm(true); }}
+                  className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Plus size={18} />
+                  Añadir Ingrediente
+                </button>
+              )}
+            </div>
+
+            {showIngredienteForm && (
+              <div className="bg-white rounded-lg shadow p-6 mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold">Añadir Ingrediente</h3>
+                  <button onClick={() => { setShowIngredienteForm(false); setTipoIngrediente("ingrediente"); resetIng({ merma_porcentaje: "0" }); }} className="text-gray-400 hover:text-gray-600">
+                    <X size={20} />
+                  </button>
+                </div>
+                <div className="flex gap-2 mb-4">
+                  <button type="button" onClick={() => setTipoIngrediente("ingrediente")}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "ingrediente" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    Ingrediente
+                  </button>
+                  <button type="button" onClick={() => { setTipoIngrediente("receta"); resetIng({ merma_porcentaje: "0", unidad: "ud" }); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "receta" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    Receta base
+                  </button>
+                </div>
+                <form onSubmit={handleSubmitIng(onSubmitIngrediente)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      {tipoIngrediente === "ingrediente" ? "Ingrediente *" : "Receta base *"}
+                    </label>
+                    {tipoIngrediente === "ingrediente" ? (
+                      <select
+                        {...registerIng("ingrediente_id", { required: tipoIngrediente === "ingrediente" ? "Selecciona un ingrediente" : false })}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Seleccionar...</option>
+                        {ingredientes.map((i) => (
+                          <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        {...registerIng("sub_receta_id", { required: tipoIngrediente === "receta" ? "Selecciona una receta base" : false })}
+                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="">Seleccionar receta base...</option>
+                        {recetasBase.filter(rb => rb.id !== editingId).map((rb) => (
+                          <option key={rb.id} value={rb.id}>{rb.nombre} ({rb.porciones} ud.)</option>
+                        ))}
+                      </select>
+                    )}
+                    {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
+                    {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{errorsIng.sub_receta_id.message}</p>}
+                    {recetasBase.length === 0 && tipoIngrediente === "receta" && <p className="text-xs text-gray-400 mt-1">No hay recetas marcadas como base</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad *</label>
+                    <input
+                      type="number"
+                      step="0.001"
+                      {...registerIng("cantidad")}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {errorsIng.cantidad && <p className="text-red-500 text-sm mt-1">{errorsIng.cantidad.message}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Unidad *</label>
+                    <select
+                      {...registerIng("unidad")}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      disabled={tipoIngrediente === "receta"}
+                    >
+                      {tipoIngrediente === "receta" ? (
+                        <option value="ud">ud</option>
+                      ) : (
+                        <>
+                          <option value="kg">kg</option>
+                          <option value="g">g</option>
+                          <option value="l">l</option>
+                          <option value="ml">ml</option>
+                          <option value="ud">ud</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Merma %</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      {...registerIng("merma_porcentaje")}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                    <input
+                      {...registerIng("notas")}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div className="md:col-span-2 flex gap-3 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setShowIngredienteForm(false)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingIng}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    >
+                      {isSubmittingIng ? "Añadiendo..." : "Añadir"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="bg-white rounded-lg shadow overflow-hidden mb-6">
+              {ingredientesError && (
+                <div className="p-3 bg-red-50 border-b border-red-200 text-red-700 text-sm">
+                  Error cargando ingredientes: {ingredientesError}
+                </div>
+              )}
+              {recetaIngredientes.length === 0 ? (
+                <div className="p-6 text-center text-gray-500">
+                  {ingredientesError ? "Error al cargar ingredientes" : "No hay ingredientes. Añade el primero."}
+                </div>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Ingrediente</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Unidad</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Merma %</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Notas</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {recetaIngredientes.map((ri) => (
+                      <tr key={ri.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                          {ri.sub_receta_id ? (
+                            <span className="flex items-center gap-1.5">
+                              <span className="bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded font-semibold">RECETA</span>
+                              {ri.sub_receta_nombre ?? `Receta #${ri.sub_receta_id}`}
+                            </span>
+                          ) : (
+                            ri.ingrediente_nombre ?? "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{ri.cantidad}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{ri.unidad}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{ri.merma_porcentaje}%</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{ri.notas ?? "-"}</td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          <button
+                            onClick={() => handleDeleteIngrediente(ri.id)}
+                            className="text-red-600 hover:text-red-800"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (selectedReceta) {
     return (
@@ -365,13 +731,29 @@ export default function Recetas() {
           >
             <ChevronLeft size={24} />
           </button>
-          <div>
+          <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-800">{selectedReceta.nombre}</h2>
             <p className="text-sm text-gray-500">
               {selectedReceta.categoria ?? "Sin categoría"} · {selectedReceta.porciones} porciones
               {selectedReceta.tiempo_preparacion && ` · ${selectedReceta.tiempo_preparacion} min`}
               {selectedReceta.es_base && " · Receta base"}
             </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleEdit(selectedReceta)}
+              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              <Pencil size={16} />
+              Editar
+            </button>
+            <button
+              onClick={() => handleDelete(selectedReceta.id)}
+              className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors text-sm"
+            >
+              <Trash2 size={16} />
+              Eliminar
+            </button>
           </div>
         </div>
 
@@ -392,197 +774,10 @@ export default function Recetas() {
           </div>
         )}
 
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Ingredientes</h3>
-          {!showIngredienteForm && (
-            <button
-              onClick={() => {
-                resetIng();
-                setShowIngredienteForm(true);
-              }}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={18} />
-              Añadir Ingrediente
-            </button>
-          )}
-        </div>
-
-        {showIngredienteForm && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Añadir Ingrediente</h3>
-              <button onClick={() => { setShowIngredienteForm(false); setTipoIngrediente("ingrediente"); resetIng({ merma_porcentaje: "0" }); }} className="text-gray-400 hover:text-gray-600">
-                <X size={20} />
-              </button>
-            </div>
-            {/* Toggle ingrediente / receta base */}
-            <div className="flex gap-2 mb-4">
-              <button type="button" onClick={() => setTipoIngrediente("ingrediente")}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "ingrediente" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                Ingrediente
-              </button>
-              <button type="button" onClick={() => { setTipoIngrediente("receta"); resetIng({ merma_porcentaje: "0", unidad: "ud" }); }}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "receta" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-                Receta base
-              </button>
-            </div>
-            <form onSubmit={handleSubmitIng(onSubmitIngrediente)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  {tipoIngrediente === "ingrediente" ? "Ingrediente *" : "Receta base *"}
-                </label>
-                {tipoIngrediente === "ingrediente" ? (
-                  <select
-                    {...registerIng("ingrediente_id", { required: tipoIngrediente === "ingrediente" ? "Selecciona un ingrediente" : false })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Seleccionar...</option>
-                    {ingredientes.map((i) => (
-                      <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                    ))}
-                  </select>
-                ) : (
-                  <select
-                    {...registerIng("sub_receta_id", { required: tipoIngrediente === "receta" ? "Selecciona una receta base" : false })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Seleccionar receta base...</option>
-                    {recetasBase.filter(rb => rb.id !== selectedReceta?.id).map((rb) => (
-                      <option key={rb.id} value={rb.id}>{rb.nombre} ({rb.porciones} ud.)</option>
-                    ))}
-                  </select>
-                )}
-                {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
-                {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{errorsIng.sub_receta_id.message}</p>}
-                {recetasBase.length === 0 && tipoIngrediente === "receta" && <p className="text-xs text-gray-400 mt-1">No hay recetas marcadas como base</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad *</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  {...registerIng("cantidad")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                {errorsIng.cantidad && <p className="text-red-500 text-sm mt-1">{errorsIng.cantidad.message}</p>}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Unidad *</label>
-                <select
-                  {...registerIng("unidad")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  disabled={tipoIngrediente === "receta"}
-                >
-                  {tipoIngrediente === "receta" ? (
-                    <option value="ud">ud</option>
-                  ) : (
-                    <>
-                      <option value="kg">kg</option>
-                      <option value="g">g</option>
-                      <option value="l">l</option>
-                      <option value="ml">ml</option>
-                      <option value="ud">ud</option>
-                    </>
-                  )}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Merma %</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max="100"
-                  {...registerIng("merma_porcentaje")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
-                <input
-                  {...registerIng("notas")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-              <div className="md:col-span-2 flex gap-3 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setShowIngredienteForm(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmittingIng}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-                >
-                  {isSubmittingIng ? "Añadiendo..." : "Añadir"}
-                </button>
-              </div>
-            </form>
-          </div>
-        )}
-
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {ingredientesError && (
-            <div className="p-3 bg-red-50 border-b border-red-200 text-red-700 text-sm">
-              Error cargando ingredientes: {ingredientesError}
-            </div>
-          )}
-          {recetaIngredientes.length === 0 ? (
-            <div className="p-6 text-center text-gray-500">
-              {ingredientesError ? "Error al cargar ingredientes" : "No hay ingredientes en este escandallo"}
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Ingrediente</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Unidad</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Merma %</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Notas</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {recetaIngredientes.map((ri) => (
-                  <tr key={ri.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-800">
-                      {ri.sub_receta_id ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className="bg-amber-100 text-amber-700 text-xs px-1.5 py-0.5 rounded font-semibold">RECETA</span>
-                          {ri.sub_receta_nombre ?? `Receta #${ri.sub_receta_id}`}
-                        </span>
-                      ) : (
-                        ri.ingrediente_nombre ?? "—"
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600 text-right">{ri.cantidad}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{ri.unidad}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600 text-right">{ri.merma_porcentaje}%</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{ri.notas ?? "-"}</td>
-                    <td className="px-4 py-3 text-sm text-right">
-                      <button
-                        onClick={() => handleDeleteIngrediente(ri.id)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
         {costeReceta && (
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Costes</h3>
+          <>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold">Costes</h3>
               <button
                 onClick={() => {
                   exportRecetaPDF({
@@ -746,7 +941,7 @@ export default function Recetas() {
                 </tfoot>
               </table>
             </div>
-          </div>
+          </>
         )}
 
         {/* Guarniciones */}
@@ -879,128 +1074,18 @@ export default function Recetas() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">Escandallos</h2>
-        {!showForm && (
-          <button
-            onClick={() => {
-              setEditingId(null);
-              reset();
-              setShowForm(true);
-            }}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plus size={18} />
-            Nuevo Escandallo
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setEditingId(null);
+            reset();
+            setShowForm(true);
+          }}
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Plus size={18} />
+          Nuevo Escandallo
+        </button>
       </div>
-
-      {showForm && (
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold">
-              {editingId ? "Editar Escandallo" : "Nuevo Escandallo"}
-            </h3>
-            <button onClick={handleCancel} className="text-gray-400 hover:text-gray-600">
-              <X size={20} />
-            </button>
-          </div>
-          <form onSubmit={handleSubmit(onSubmitReceta)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
-              <input
-                {...register("nombre")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              {errors.nombre && <p className="text-red-500 text-sm mt-1">{errors.nombre.message}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-              <input
-                {...register("categoria")}
-                placeholder="Ej: Postres, Primer plato..."
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Porciones *</label>
-              <input
-                type="number"
-                min="1"
-                {...register("porciones")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              {errors.porciones && <p className="text-red-500 text-sm mt-1">{errors.porciones.message}</p>}
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tiempo (min)</label>
-              <input
-                type="number"
-                min="0"
-                {...register("tiempo_preparacion")}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-              <textarea
-                {...register("descripcion")}
-                rows={3}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta actual por porción (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                {...register("precio_venta")}
-                placeholder="0.00"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Margen objetivo mínimo (%)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                max="99"
-                {...register("margen_porcentaje")}
-                placeholder="Ej: 70"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">&nbsp;</label>
-              <label className="flex items-center gap-2 h-[42px]">
-                <input
-                  type="checkbox"
-                  {...register("es_base")}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span className="text-sm font-medium text-gray-700">Escandallo base</span>
-              </label>
-            </div>
-            <div className="md:col-span-2 flex gap-3 justify-end">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {isSubmitting ? "Guardando..." : editingId ? "Actualizar" : "Crear"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
         {loading ? (

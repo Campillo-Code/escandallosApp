@@ -9,6 +9,7 @@ import Albaranes from "./pages/Albaranes";
 import Inventario from "./pages/Inventario";
 import Dashboard from "./pages/Dashboard";
 import FichasTecnicas from "./pages/FichasTecnicas";
+import FichasReceta from "./pages/FichasReceta";
 import Ventas from "./pages/Ventas";
 import MenuEngineering from "./pages/MenuEngineering";
 import Contabilidad from "./pages/Contabilidad";
@@ -42,6 +43,7 @@ const sections: SidebarSection[] = [
       { to: "/escandallos", label: "Escandallos", icon: "📋" },
       { to: "/guarniciones", label: "Guarniciones", icon: "🥗" },
       { to: "/fichas-tecnicas", label: "Fichas Técnicas", icon: "🧾" },
+      { to: "/fichas-receta", label: "Fichas Receta", icon: "📖" },
     ],
   },
   {
@@ -233,6 +235,7 @@ function App() {
           <Route path="/albaranes" element={<Albaranes />} />
           <Route path="/inventario" element={<Inventario />} />
           <Route path="/fichas-tecnicas" element={<FichasTecnicas />} />
+          <Route path="/fichas-receta" element={<FichasReceta />} />
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/menu-engineering" element={<MenuEngineering />} />
           <Route path="/contabilidad" element={<Contabilidad />} />

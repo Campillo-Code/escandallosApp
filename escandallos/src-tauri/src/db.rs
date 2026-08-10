@@ -236,6 +236,53 @@ async fn run_migrations(pool: &MySqlPool) {
         let _ = sqlx::query("ALTER TABLE ventas ADD COLUMN ticket_id INT NULL AFTER id").execute(pool).await;
         println!("ALTER TABLE ventas ADD ticket_id completed");
     }
+
+    let check_desc: Option<(String,)> = sqlx::query_as("SHOW COLUMNS FROM fichas_tecnicas LIKE 'descripcion'")
+        .fetch_optional(pool).await.unwrap_or(None);
+    if check_desc.is_none() {
+        let _ = sqlx::query("ALTER TABLE fichas_tecnicas ADD COLUMN descripcion TEXT AFTER notas_adicionales").execute(pool).await;
+        println!("ALTER TABLE fichas_tecnicas ADD descripcion completed");
+    }
+
+    let check_elab: Option<(String,)> = sqlx::query_as("SHOW COLUMNS FROM recetas LIKE 'elaboracion'")
+        .fetch_optional(pool).await.unwrap_or(None);
+    if check_elab.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN elaboracion TEXT AFTER descripcion").execute(pool).await;
+        println!("ALTER TABLE recetas ADD elaboracion completed");
+    }
+
+    let check_cons: Option<(String,)> = sqlx::query_as("SHOW COLUMNS FROM recetas LIKE 'conservacion'")
+        .fetch_optional(pool).await.unwrap_or(None);
+    if check_cons.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN conservacion VARCHAR(255) AFTER elaboracion").execute(pool).await;
+        println!("ALTER TABLE recetas ADD conservacion completed");
+    }
+
+    let check_regen: Option<(String,)> = sqlx::query_as("SHOW COLUMNS FROM recetas LIKE 'regeneracion'")
+        .fetch_optional(pool).await.unwrap_or(None);
+    if check_regen.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN regeneracion VARCHAR(255) AFTER conservacion").execute(pool).await;
+        println!("ALTER TABLE recetas ADD regeneracion completed");
+    }
+
+    let check_vida: Option<(String,)> = sqlx::query_as("SHOW COLUMNS FROM recetas LIKE 'vida_util'")
+        .fetch_optional(pool).await.unwrap_or(None);
+    if check_vida.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN vida_util VARCHAR(255) AFTER regeneracion").execute(pool).await;
+        println!("ALTER TABLE recetas ADD vida_util completed");
+    }
+
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS fichas_receta (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            receta_id INT NOT NULL,
+            catalogado_en VARCHAR(255) NULL,
+            fecha DATE NULL,
+            fotos TEXT NULL,
+            notas_adicionales TEXT NULL,
+            FOREIGN KEY (receta_id) REFERENCES recetas(id) ON DELETE CASCADE
+        )"
+    ).execute(pool).await;
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {

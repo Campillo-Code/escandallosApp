@@ -5,6 +5,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { writeFile } from "@tauri-apps/plugin-fs";
 import { homeDir } from "@tauri-apps/api/path";
 import { invoke } from "@tauri-apps/api/core";
+import { getAlergenoLabel } from "./alergenos";
 
 interface RecetaData {
   nombre: string;
@@ -385,16 +386,13 @@ export async function exportAlbaranPDF(albaran: {
 interface FichaTecnicaData {
   receta_nombre: string;
   codigo_interno: string | null;
-  catalogado_en: string | null;
   fecha: string | null;
-  porciones: number;
-  instrucciones_consumo: string | null;
+  descripcion: string | null;
   ingredientes: { ingrediente_nombre: string; cantidad: number; unidad: string; }[];
   alergenos: string[];
   pasos_preparacion: string | null;
   conservacion: string | null;
   vida_util: string | null;
-  regeneracion: string | null;
   fotos: string | null;
 }
 
@@ -452,53 +450,19 @@ export async function exportFichaTecnicaPDF(ficha: FichaTecnicaData) {
   doc.text(`NOMBRE DEL PLATO: ${ficha.receta_nombre}`, ml + 4, y + 6.5);
   y += 9;
 
-  // ═══ ROW: Catalogado | Fecha | Raciones | Instrucciones (4 cols) ═══
-  const colW4 = cw / 4;
-  const rowH = 22;
+  // ═══ ROW: FECHA ═══
+  const rowH = 10;
 
-  // First 3 cols: indigo-200
   doc.setFillColor(...indigo200);
-  doc.rect(ml, y, colW4 * 3, rowH, "F");
-  // Col 4: indigo-50
-  doc.setFillColor(...indigo50);
-  doc.rect(ml + colW4 * 3, y, colW4, rowH, "F");
+  doc.rect(ml, y, cw, rowH, "F");
 
-  // Col 1: CATALOGADO EN
   doc.setFontSize(7);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...indigo900);
-  doc.text("CATALOGADO EN", ml + 2, y + 5);
+  doc.text("FECHA", ml + 2, y + 5);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.text(ficha.catalogado_en || "—", ml + 2, y + 13, { maxWidth: colW4 - 4 });
-
-  // Col 2: FECHA
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...indigo900);
-  doc.text("FECHA", ml + colW4 + 2, y + 5);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(ficha.fecha || "—", ml + colW4 + 2, y + 13);
-
-  // Col 3: Nº RACIONES
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...indigo900);
-  doc.text("Nº RACIONES", ml + colW4 * 2 + 2, y + 5);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(String(ficha.porciones), ml + colW4 * 2 + 2, y + 13);
-
-  // Col 4: INSTRUCCIONES DE CONSUMO
-  doc.setFontSize(7);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(...indigo900);
-  doc.text("INSTRUCCIONES DE CONSUMO", ml + colW4 * 3 + 2, y + 5);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(55, 55, 55);
-  doc.text(ficha.instrucciones_consumo || "—", ml + colW4 * 3 + 2, y + 13, { maxWidth: colW4 - 4 });
+  doc.text(ficha.fecha || "—", ml + 20, y + 5);
 
   y += rowH + 2;
 
@@ -600,9 +564,27 @@ export async function exportFichaTecnicaPDF(ficha: FichaTecnicaData) {
     y += 10;
   }
 
-  // ═══ ELABORACIÓN ═══
+  // ═══ DESCRIPCIÓN ═══
+  y = sectionHeader("DESCRIPCIÓN", y);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0);
+  if (ficha.descripcion) {
+    const lineas = ficha.descripcion.split("\n");
+    for (const linea of lineas) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(linea, ml + 4, y + 4);
+      y += 5;
+    }
+  } else {
+    doc.setTextColor(150);
+    doc.text("—", ml + 4, y + 4);
+  }
+  y += 5;
+
+  // ═══ INFORMACIÓN DE SEGURIDAD Y CALIDAD ═══
   if (ficha.pasos_preparacion) {
-    y = sectionHeader("ELABORACIÓN", y);
+    y = sectionHeader("INFORMACIÓN DE SEGURIDAD Y CALIDAD", y);
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0);
@@ -633,15 +615,6 @@ export async function exportFichaTecnicaPDF(ficha: FichaTecnicaData) {
     doc.setTextColor(0);
     doc.text(ficha.vida_util, ml + 4, y + 4);
     y += 10;
-  }
-
-  // ═══ REGENERACIÓN ═══
-  if (ficha.regeneracion) {
-    y = sectionHeader("REGENERACIÓN", y);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0);
-    doc.text(ficha.regeneracion, ml + 4, y + 4);
   }
 
   const fileName = `ficha_tecnica_${ficha.receta_nombre.replace(/\s+/g, "_")}.pdf`;
@@ -879,4 +852,331 @@ export async function printEtiquetaPDF(data: EtiquetaData) {
   await writeFile(tmpPath, new Uint8Array(buffer));
   const printerName = localStorage.getItem("selected_printer") || null;
   await invoke<string>("print_pdf_file", { path: tmpPath, printerName });
+}
+
+// ========================================
+// FICHA DE RECETA PDF
+// ========================================
+
+interface FichaRecetaData {
+  receta_nombre: string;
+  catalogado_en: string | null;
+  fecha: string | null;
+  porciones: number;
+  precio_venta: number | null;
+  tiempo_preparacion: number | null;
+  ingredientes: { ingrediente_nombre: string; cantidad: number; unidad: string; merma_porcentaje: number; }[];
+  coste_ingredientes: { ingrediente_nombre: string; cantidad: number; unidad: string; precio_por_unidad_receta: number | null; coste: number; merma_porcentaje: number; }[];
+  alergenos: string[];
+  elaboracion: string | null;
+  conservacion: string | null;
+  regeneracion: string | null;
+  vida_util: string | null;
+  coste_total: number;
+  coste_porcion: number;
+  food_cost_pct: number | null;
+  margen_real_pct: number | null;
+  margen_porcentaje: number | null;
+  notas_adicionales: string | null;
+  fotos: string | null;
+}
+
+export async function exportFichaRecetaPDF(ficha: FichaRecetaData) {
+  const doc = new jsPDF();
+  const pageW = doc.internal.pageSize.getWidth();
+  const ml = 14;
+  const cw = pageW - 28;
+
+  const indigo900: [number, number, number] = [49, 46, 129];
+  const indigo200: [number, number, number] = [199, 210, 254];
+  const indigo100: [number, number, number] = [224, 231, 255];
+  const indigo50: [number, number, number] = [238, 242, 255];
+  const gray100: [number, number, number] = [243, 244, 246];
+
+  const sectionHeader = (title: string, yPos: number) => {
+    if (yPos > 260) { doc.addPage(); yPos = 20; }
+    doc.setFillColor(...indigo200);
+    doc.rect(ml, yPos, cw, 8, "F");
+    doc.setFontSize(8);
+    doc.setTextColor(...indigo900);
+    doc.setFont("helvetica", "bold");
+    doc.text(title, ml + 4, yPos + 5.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0);
+    return yPos + 10;
+  };
+
+  let y = 10;
+
+  // HEADER
+  doc.setFillColor(...indigo900);
+  doc.rect(ml, y, cw, 12, "F");
+  doc.setFontSize(15);
+  doc.setTextColor(255);
+  doc.setFont("helvetica", "bold");
+  doc.text("FICHA DE RECETA", pageW / 2, y + 8, { align: "center" });
+  y += 12;
+
+  // CÓDIGO INTERNO
+  doc.setFillColor(...indigo100);
+  doc.rect(ml, y, cw, 8, "F");
+  doc.setFontSize(9);
+  doc.setTextColor(...indigo900);
+  doc.setFont("helvetica", "bold");
+  doc.text(`CÓDIGO INTERNO: ${ficha.catalogado_en || "—"}`, ml + 4, y + 5.5);
+  y += 8;
+
+  // NOMBRE DEL PLATO
+  doc.setFillColor(...indigo50);
+  doc.rect(ml, y, cw, 9, "F");
+  doc.setFontSize(11);
+  doc.setTextColor(...indigo900);
+  doc.text(`NOMBRE DEL PLATO: ${ficha.receta_nombre}`, ml + 4, y + 6.5);
+  y += 9;
+
+  // ROW: CATALOGADO EN | Nº PORCIONES | PRECIO/PORCIÓN | TIEMPO ELABORACIÓN
+  const rowH = 10;
+  const colW = cw / 4;
+  doc.setFillColor(...indigo200);
+  doc.rect(ml, y, cw, rowH, "F");
+
+  const drawCell = (label: string, value: string, x: number) => {
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...indigo900);
+    doc.text(label, x + 2, y + 4);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text(value, x + 2, y + 8.5);
+  };
+
+  drawCell("CATALOGADO EN", ficha.catalogado_en || "—", ml);
+  drawCell("Nº PORCIONES", String(ficha.porciones), ml + colW);
+  drawCell("PRECIO/PORCIÓN", ficha.precio_venta != null ? `${ficha.precio_venta.toFixed(2)} €` : "—", ml + colW * 2);
+  drawCell("TIEMPO ELABOR.", ficha.tiempo_preparacion != null ? `${ficha.tiempo_preparacion} min` : "—", ml + colW * 3);
+
+  y += rowH + 2;
+
+  // FECHA
+  doc.setFillColor(...indigo200);
+  doc.rect(ml, y, cw, 8, "F");
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...indigo900);
+  doc.text("FECHA", ml + 2, y + 5.5);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text(ficha.fecha || "—", ml + 20, y + 5.5);
+  y += 10;
+
+  // INGREDIENTES (3/5) + IMAGEN (2/5)
+  const ingW = (cw * 3) / 5;
+  const imgW = (cw * 2) / 5;
+  const imgStartY = y;
+
+  doc.setFillColor(...indigo200);
+  doc.rect(ml, y, ingW, 8, "F");
+  doc.setFontSize(8);
+  doc.setTextColor(...indigo900);
+  doc.setFont("helvetica", "bold");
+  doc.text("INGREDIENTES Y CANTIDADES", ml + 4, y + 5.5);
+  y += 8;
+
+  const ingData = ficha.coste_ingredientes.map((ing) => [
+    ing.ingrediente_nombre,
+    ing.unidad,
+    `${ing.cantidad}`,
+    ing.precio_por_unidad_receta != null ? `${ing.precio_por_unidad_receta.toFixed(4)} €` : "-",
+    `${ing.merma_porcentaje}%`,
+    `${ing.coste.toFixed(2)} €`,
+  ]);
+
+  if (ingData.length > 0) {
+    autoTable(doc, {
+      startY: y,
+      head: [["Ingrediente", "Unidad", "Cantidad", "Precio/ud", "Merma", "Coste"]],
+      body: ingData,
+      theme: "striped",
+      styles: { fontSize: 8, cellPadding: 2 },
+      columnStyles: { 3: { halign: "right" as const }, 4: { halign: "right" as const }, 5: { halign: "right" as const } },
+      margin: { left: ml, right: pageW - ml - ingW },
+      tableWidth: ingW,
+    });
+    // @ts-ignore
+    y = doc.lastAutoTable.finalY;
+  } else {
+    doc.setFontSize(9);
+    doc.setTextColor(150);
+    doc.text("Sin ingredientes", ml + 4, y + 6);
+    y += 10;
+  }
+
+  // Image
+  const imgBoxH = Math.max(y - imgStartY, 60);
+  if (ficha.fotos && ficha.fotos.startsWith("data:image")) {
+    try {
+      const imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = ficha.fotos!;
+      });
+      const imgRatio = imgEl.width / imgEl.height;
+      const boxRatio = imgW / imgBoxH;
+      let drawW: number, drawH: number, drawX: number, drawY: number;
+      if (imgRatio > boxRatio) {
+        drawW = imgW;
+        drawH = imgW / imgRatio;
+        drawX = ml + ingW;
+        drawY = imgStartY + (imgBoxH - drawH) / 2;
+      } else {
+        drawH = imgBoxH;
+        drawW = imgBoxH * imgRatio;
+        drawX = ml + ingW + (imgW - drawW) / 2;
+        drawY = imgStartY;
+      }
+      doc.addImage(ficha.fotos, "JPEG", drawX, drawY, drawW, drawH);
+    } catch {
+      doc.setFillColor(...gray100);
+      doc.rect(ml + ingW, imgStartY, imgW, imgBoxH, "F");
+      doc.setFontSize(9);
+      doc.setTextColor(150);
+      doc.setFont("helvetica", "normal");
+      doc.text("IMAGEN RECETA", ml + ingW + imgW / 2, imgStartY + imgBoxH / 2, { align: "center" });
+    }
+  } else {
+    doc.setFillColor(...gray100);
+    doc.rect(ml + ingW, imgStartY, imgW, imgBoxH, "F");
+    doc.setDrawColor(200);
+    doc.rect(ml + ingW, imgStartY, imgW, imgBoxH, "S");
+    doc.setFontSize(9);
+    doc.setTextColor(150);
+    doc.setFont("helvetica", "normal");
+    doc.text("IMAGEN RECETA", ml + ingW + imgW / 2, imgStartY + imgBoxH / 2, { align: "center" });
+  }
+
+  y = imgStartY + imgBoxH + 4;
+
+  // ALÉRGENOS
+  if (ficha.alergenos.length > 0) {
+    y = sectionHeader("ALÉRGENOS", y);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0);
+    doc.text(ficha.alergenos.map(a => getAlergenoLabel ? getAlergenoLabel(a) : a).join(", "), ml + 4, y + 4);
+    y += 10;
+  }
+
+  // ELABORACIÓN
+  if (ficha.elaboracion) {
+    y = sectionHeader("ELABORACIÓN", y);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0);
+    const lineas = ficha.elaboracion.split("\n");
+    for (const linea of lineas) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(linea, ml + 4, y + 4);
+      y += 5;
+    }
+    y += 5;
+  }
+
+  // CONSERVACIÓN | REGENERACIÓN | VIDA ÚTIL
+  const hasConservacion = !!ficha.conservacion;
+  const hasRegeneracion = !!ficha.regeneracion;
+  const hasVidaUtil = !!ficha.vida_util;
+  if (hasConservacion || hasRegeneracion || hasVidaUtil) {
+    const infoY = y;
+    const infoH = 14;
+    const col3W = cw / 3;
+
+    doc.setFillColor(...indigo200);
+    doc.rect(ml, infoY, cw, infoH, "F");
+
+    const drawInfoCell = (title: string, value: string, x: number) => {
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(...indigo900);
+      doc.text(title, x + 2, infoY + 4);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(0);
+      doc.text(value || "—", x + 2, infoY + 10);
+    };
+
+    drawInfoCell("CONSERVACIÓN", ficha.conservacion || "", ml);
+    drawInfoCell("REGENERACIÓN", ficha.regeneracion || "", ml + col3W);
+    drawInfoCell("VIDA ÚTIL", ficha.vida_util || "", ml + col3W * 2);
+
+    y = infoY + infoH + 4;
+  }
+
+  // COSTES
+  y = sectionHeader("COSTES", y);
+  const costRowH = 10;
+  const costColW = cw / 4;
+
+  doc.setFillColor(...gray100);
+  doc.rect(ml, y, cw, costRowH, "F");
+
+  const drawCostCell = (label: string, value: string, x: number) => {
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(80);
+    doc.text(label, x + 2, y + 4);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(0);
+    doc.text(value, x + 2, y + 8.5);
+  };
+
+  drawCostCell("COSTE TOTAL", `${ficha.coste_total.toFixed(2)} €`, ml);
+  drawCostCell("COSTE/PORCIÓN", `${ficha.coste_porcion.toFixed(2)} €`, ml + costColW);
+  drawCostCell("FOOD COST", ficha.food_cost_pct != null ? `${ficha.food_cost_pct.toFixed(1)}%` : "—", ml + costColW * 2);
+  drawCostCell("MARGEN REAL", ficha.margen_real_pct != null ? `${ficha.margen_real_pct.toFixed(1)}%` : "—", ml + costColW * 3);
+
+  y += costRowH + 2;
+
+  // PRECIO MÍNIMO SUGERIDO/PORCIÓN
+  const margen = ficha.margen_porcentaje ?? 50;
+  const precioMinimo = ficha.coste_porcion / (1 - margen / 100);
+  y = sectionHeader(`PRECIO MÍNIMO SUGERIDO/PORCIÓN (margen ${margen}%)`, y);
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(0);
+  doc.text(`Coste/porción: ${ficha.coste_porcion.toFixed(2)} €`, ml + 4, y + 4);
+  y += 6;
+  doc.setFontSize(20);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(49, 46, 129);
+  doc.text(`${precioMinimo.toFixed(2)} €`, ml + 4, y + 6);
+  y += 12;
+
+  // NOTAS ADICIONALES
+  if (ficha.notas_adicionales) {
+    y = sectionHeader("NOTAS ADICIONALES", y);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(0);
+    const lineas = ficha.notas_adicionales.split("\n");
+    for (const linea of lineas) {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(linea, ml + 4, y + 4);
+      y += 5;
+    }
+    y += 5;
+  }
+
+  const fileName = `ficha_receta_${ficha.receta_nombre.replace(/\s+/g, "_")}.pdf`;
+  const home = await homeDir();
+  const path = await save({
+    defaultPath: `${home}/${fileName}`,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (path) {
+    const blob = doc.output("blob");
+    const buffer = await blob.arrayBuffer();
+    await writeFile(path, new Uint8Array(buffer));
+  }
 }
