@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 
 interface CajaCategoria {
   id: number;
@@ -35,6 +37,8 @@ export default function PlatosCaja() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState({ categoria_id: 0, receta_id: null as number | null, nombre: "", activo: true });
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
 
   const loadCategorias = async () => {
     try {
@@ -160,7 +164,25 @@ export default function PlatosCaja() {
       </div>
 
       {/* Platos table */}
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+      <>
+        <div className="p-4 pb-2 space-y-3">
+          <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar plato..." />
+          <div className="flex gap-2">
+            <button onClick={() => setStatusFilter("all")}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${statusFilter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              Todos ({platos.length})
+            </button>
+            <button onClick={() => setStatusFilter("active")}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${statusFilter === "active" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              Activos ({platos.filter(p => p.activo).length})
+            </button>
+            <button onClick={() => setStatusFilter("inactive")}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${statusFilter === "inactive" ? "bg-red-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              Desactivados ({platos.filter(p => !p.activo).length})
+            </button>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
@@ -171,7 +193,12 @@ export default function PlatosCaja() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {platos.map(plato => (
+            {platos.filter(p => {
+              if (selectedCat && p.categoria_id !== selectedCat) return false;
+              if (statusFilter === "active" && !p.activo) return false;
+              if (statusFilter === "inactive" && p.activo) return false;
+              return !searchTerm || p.nombre.toLowerCase().includes(searchTerm.toLowerCase());
+            }).map(plato => (
               <tr key={plato.id} className={`hover:bg-gray-50 ${!plato.activo ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3 font-medium text-gray-800">{plato.nombre}</td>
                 <td className="px-4 py-3">
@@ -194,14 +221,20 @@ export default function PlatosCaja() {
                 </td>
               </tr>
             ))}
-            {platos.length === 0 && (
+            {platos.filter(p => {
+              if (selectedCat && p.categoria_id !== selectedCat) return false;
+              if (statusFilter === "active" && !p.activo) return false;
+              if (statusFilter === "inactive" && p.activo) return false;
+              return !searchTerm || p.nombre.toLowerCase().includes(searchTerm.toLowerCase());
+            }).length === 0 && (
               <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">
-                {selectedCat ? "No hay platos en esta categoría" : "No hay platos. Añade uno con el botón de arriba."}
+                {searchTerm ? "No se encontraron platos" : selectedCat ? "No hay platos en esta categoría" : "No hay platos. Añade uno con el botón de arriba."}
               </td></tr>
             )}
           </tbody>
         </table>
       </div>
+      </>
 
       {/* Form modal */}
       {showForm && (
@@ -214,29 +247,27 @@ export default function PlatosCaja() {
             <div className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Categoría Caja *</label>
-                <select value={form.categoria_id} onChange={(e) => setForm({ ...form, categoria_id: Number(e.target.value) })}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                  <option value={0}>Seleccionar categoría...</option>
-                  {categorias.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                </select>
+                <SearchableSelect
+                  options={categorias.map(c => ({ value: c.id, label: c.nombre }))}
+                  value={form.categoria_id}
+                  onChange={(val) => setForm({ ...form, categoria_id: val })}
+                  placeholder="Seleccionar categoría..."
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Receta (Escandallos) *</label>
-                <select
-                  value={form.receta_id ?? ""}
-                  onChange={(e) => {
-                    const id = e.target.value ? Number(e.target.value) : null;
+                <SearchableSelect
+                  options={Object.entries(recetasByCategoria).flatMap(([cat, items]) =>
+                    items.map(r => ({ value: r.id, label: `[${cat}] ${r.nombre}` }))
+                  )}
+                  value={form.receta_id ?? 0}
+                  onChange={(val) => {
+                    const id = val || null;
                     const receta = recetas.find(r => r.id === id);
                     setForm({ ...form, receta_id: id, nombre: receta?.nombre ?? form.nombre });
                   }}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                  <option value="">Seleccionar receta...</option>
-                  {Object.entries(recetasByCategoria).map(([cat, items]) => (
-                    <optgroup key={cat} label={cat}>
-                      {items.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
+                  placeholder="Seleccionar receta..."
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nombre (editable) *</label>

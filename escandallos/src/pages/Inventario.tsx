@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, X, AlertTriangle, ArrowDown, ArrowUp, Minus, Settings, FileSpreadsheet, FileText } from "lucide-react";
 import { exportInventarioExcel, exportInventarioPDF } from "../lib/exports";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 
 interface InventarioItem {
   id: number;
@@ -70,9 +72,11 @@ export default function Inventario() {
   const [showMovimientoForm, setShowMovimientoForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"stock" | "movimientos">("stock");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const {
     register: registerStock,
+    control: controlStock,
     handleSubmit: handleSubmitStock,
     reset: resetStock,
     formState: { errors: errorsStock, isSubmitting: isSubmittingStock },
@@ -82,6 +86,7 @@ export default function Inventario() {
 
   const {
     register: registerMov,
+    control: controlMov,
     handleSubmit: handleSubmitMov,
     reset: resetMov,
     watch: watchMov,
@@ -259,15 +264,19 @@ export default function Inventario() {
               <form onSubmit={handleSubmitStock(onSubmitStock)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-                  <select
-                    {...registerStock("ingrediente_id")}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Seleccionar...</option>
-                    {ingredientes.map((i) => (
-                      <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={controlStock}
+                    name="ingrediente_id"
+                    rules={{ required: "Selecciona un ingrediente" }}
+                    render={({ field }) => (
+                      <SearchableSelect
+                        options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                        value={field.value ? Number(field.value) : 0}
+                        onChange={(val) => field.onChange(val)}
+                        placeholder="Seleccionar..."
+                      />
+                    )}
+                  />
                   {errorsStock.ingrediente_id && <p className="text-red-500 text-sm mt-1">{errorsStock.ingrediente_id.message}</p>}
                 </div>
                 <div>
@@ -322,6 +331,10 @@ export default function Inventario() {
             </div>
           )}
 
+          <div className="p-4 pb-2">
+            <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar ingrediente..." />
+          </div>
+
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {loading ? (
               <div className="p-6 text-center text-gray-500">Cargando...</div>
@@ -340,7 +353,7 @@ export default function Inventario() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {inventario.map((inv) => {
+                  {inventario.filter((inv) => !searchTerm || inv.ingrediente_nombre?.toLowerCase().includes(searchTerm.toLowerCase())).map((inv) => {
                     const isLow = inv.stock_actual <= inv.stock_minimo;
                     return (
                       <tr key={inv.id} className="hover:bg-gray-50">
@@ -405,15 +418,19 @@ export default function Inventario() {
               <form onSubmit={handleSubmitMov(onSubmitMovimiento)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-                  <select
-                    {...registerMov("ingrediente_id")}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Seleccionar...</option>
-                    {ingredientes.map((i) => (
-                      <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                    ))}
-                  </select>
+                  <Controller
+                    control={controlMov}
+                    name="ingrediente_id"
+                    rules={{ required: "Selecciona un ingrediente" }}
+                    render={({ field }) => (
+                      <SearchableSelect
+                        options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                        value={field.value ? Number(field.value) : 0}
+                        onChange={(val) => field.onChange(val)}
+                        placeholder="Seleccionar..."
+                      />
+                    )}
+                  />
                   {errorsMov.ingrediente_id && <p className="text-red-500 text-sm mt-1">{errorsMov.ingrediente_id.message}</p>}
                 </div>
                 <div>

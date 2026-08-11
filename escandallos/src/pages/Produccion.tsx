@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, Trash2, X, Tag } from "lucide-react";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 import DatePicker, { registerLocale } from "react-datepicker";
 import { es } from "date-fns/locale/es";
 import "react-datepicker/dist/react-datepicker.css";
@@ -54,6 +56,7 @@ export default function Produccion() {
   const [fechaHasta, setFechaHasta] = useState(() => { const d = new Date(); const y = d.getFullYear(); const m = String(d.getMonth() + 1).padStart(2, "0"); const day = String(d.getDate()).padStart(2, "0"); return `${y}-${m}-${day}`; });
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadProduccion = async () => {
     try { setProducciones(await invoke("get_produccion", { fechaDesde: fechaDesde, fechaHasta: fechaHasta })); } catch (e) { console.error(e); }
@@ -160,10 +163,12 @@ export default function Produccion() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Receta *</label>
-              <select value={form.receta_id} onChange={e => handleChange("receta_id", parseInt(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2">
-                <option value={0}>Seleccionar...</option>
-                {recetas.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-              </select>
+              <SearchableSelect
+                options={recetas.map(r => ({ value: r.id, label: r.nombre }))}
+                value={form.receta_id}
+                onChange={(val) => handleChange("receta_id", val)}
+                placeholder="Seleccionar..."
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Fecha elaboración *</label>
@@ -214,10 +219,13 @@ export default function Produccion() {
             {detalles.length === 0 && <p className="text-xs text-gray-400">Sin lotes asignados</p>}
             {detalles.map((d, idx) => (
               <div key={idx} className="flex gap-2 mb-2 items-center">
-                <select value={d.lote_ingrediente_id} onChange={e => updateDetalle(idx, "lote_ingrediente_id", parseInt(e.target.value))} className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm">
-                  <option value={0}>Seleccionar lote...</option>
-                  {lotes.map(l => <option key={l.id} value={l.id}>{l.ingrediente_nombre} — L{l.numero_lote} ({l.cantidad_recibida} {l.unidad})</option>)}
-                </select>
+                <SearchableSelect
+                  options={lotes.map(l => ({ value: l.id, label: `${l.ingrediente_nombre} — L${l.numero_lote} (${l.cantidad_recibida} ${l.unidad})` }))}
+                  value={d.lote_ingrediente_id}
+                  onChange={(val) => updateDetalle(idx, "lote_ingrediente_id", val)}
+                  placeholder="Seleccionar lote..."
+                  className="flex-1"
+                />
                 <input type="number" step="0.01" value={d.cantidad_utilizada} onChange={e => updateDetalle(idx, "cantidad_utilizada", parseFloat(e.target.value) || 0)} className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Cantidad" />
                 <button onClick={() => removeDetalle(idx)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
               </div>
@@ -240,24 +248,31 @@ export default function Produccion() {
         <DateInput value={fechaHasta} onChange={setFechaHasta} label="Hasta" />
       </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
-          producciones.length === 0 ? <div className="p-6 text-center text-gray-500">No hay registros de producción</div> : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600 w-8"></th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Lote</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Receta</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Caducidad</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Responsable</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {producciones.map(p => (
+      <>
+        <div className="p-4 pb-2">
+          <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar producción..." />
+        </div>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+            producciones.length === 0 ? <div className="p-6 text-center text-gray-500">No hay registros de producción</div> : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600 w-8"></th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Lote</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Receta</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Caducidad</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Responsable</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {producciones.filter(p =>
+                    (p.receta_nombre || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (p.lote_producto || "").toLowerCase().includes(searchTerm.toLowerCase())
+                  ).map(p => (
                   <>
                     <tr key={p.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => toggleExpand(p.id)}>
                       <td className="px-4 py-3 text-gray-400 text-sm">{expandedId === p.id ? "▼" : "▶"}</td>
@@ -297,7 +312,8 @@ export default function Produccion() {
               </tbody>
             </table>
           )}
-      </div>
+        </div>
+      </>
     </div>
   );
 }

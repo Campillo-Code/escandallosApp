@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft, CheckCircle, FileText } from "lucide-react";
 import { exportAlbaranPDF } from "../lib/exports";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
 
 const albaranSchema = z.object({
@@ -69,6 +71,7 @@ export default function Albaranes() {
   const [selectedAlbaran, setSelectedAlbaran] = useState<Albaran | null>(null);
   const [detalles, setDetalles] = useState<AlbaranDetalle[]>([]);
   const [showDetalleForm, setShowDetalleForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const {
     register,
@@ -86,6 +89,7 @@ export default function Albaranes() {
 
   const {
     register: registerDetalle,
+    control: controlDetalle,
     handleSubmit: handleSubmitDetalle,
     reset: resetDetalle,
     formState: { errors: errorsDetalle, isSubmitting: isSubmittingDetalle },
@@ -320,15 +324,19 @@ export default function Albaranes() {
             <form onSubmit={handleSubmitDetalle(onSubmitDetalle)} className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-                <select
-                  {...registerDetalle("ingrediente_id")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Seleccionar...</option>
-                  {ingredientes.map((i) => (
-                    <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                  ))}
-                </select>
+                <Controller
+                  control={controlDetalle}
+                  name="ingrediente_id"
+                  rules={{ required: "Selecciona un ingrediente" }}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                      value={field.value ? Number(field.value) : 0}
+                      onChange={(val) => field.onChange(val)}
+                      placeholder="Seleccionar..."
+                    />
+                  )}
+                />
                 {errorsDetalle.ingrediente_id && <p className="text-red-500 text-sm mt-1">{errorsDetalle.ingrediente_id.message}</p>}
               </div>
               <div>
@@ -542,7 +550,11 @@ export default function Albaranes() {
         ) : albaranes.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No hay albaranes registrados</div>
         ) : (
-          <table className="w-full">
+          <>
+            <div className="p-4 pb-2">
+              <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar albarán..." />
+            </div>
+            <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nº Albarán</th>
@@ -554,7 +566,7 @@ export default function Albaranes() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {albaranes.map((a) => (
+              {albaranes.filter((a) => { const q = searchTerm.toLowerCase(); return !q || (a.numero_albaran ?? "").toLowerCase().includes(q) || (a.proveedor_nombre ?? "").toLowerCase().includes(q); }).map((a) => (
                 <tr
                   key={a.id}
                   className="hover:bg-gray-50 cursor-pointer"
@@ -595,6 +607,7 @@ export default function Albaranes() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

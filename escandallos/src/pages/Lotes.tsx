@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, Trash2, X, AlertTriangle } from "lucide-react";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
 
 interface Lote {
@@ -47,6 +49,7 @@ export default function Lotes() {
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [lotesProximos, setLotesProximos] = useState<Lote[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadLotes = async () => {
     try {
@@ -149,10 +152,12 @@ export default function Lotes() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-              <select value={form.ingrediente_id} onChange={e => handleChange("ingrediente_id", parseInt(e.target.value))} className="w-full border border-gray-300 rounded-lg px-3 py-2">
-                <option value={0}>Seleccionar...</option>
-                {ingredientes.map(i => <option key={i.id} value={i.id}>{i.nombre}</option>)}
-              </select>
+              <SearchableSelect
+                options={ingredientes.map(i => ({ value: i.id, label: i.nombre }))}
+                value={form.ingrediente_id}
+                onChange={(val) => handleChange("ingrediente_id", val)}
+                placeholder="Seleccionar..."
+              />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor *</label>
@@ -202,6 +207,11 @@ export default function Lotes() {
         </div>
       )}
 
+      <>
+      <div className="p-4 pb-2">
+        <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar lote..." />
+      </div>
+
       <div className="flex items-center gap-4 mb-4">
         <DateInput value={fechaDesde} onChange={setFechaDesde} label="Desde" />
         <DateInput value={fechaHasta} onChange={setFechaHasta} label="Hasta" />
@@ -225,7 +235,7 @@ export default function Lotes() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
-                {lotes.map(l => (
+                {lotes.filter((l) => { const q = searchTerm.toLowerCase(); return !q || (l.ingrediente_nombre ?? "").toLowerCase().includes(q) || (l.numero_lote ?? "").toLowerCase().includes(q) || (l.proveedor_nombre ?? "").toLowerCase().includes(q); }).map(l => (
                   <tr key={l.id} className={`hover:bg-gray-50 ${getCaducidadClass(l.fecha_caducidad)}`}>
                     <td className="px-4 py-3">
                       {(() => {
@@ -253,6 +263,7 @@ export default function Lotes() {
             </table>
           )}
       </div>
+      </>
     </div>
   );
 }

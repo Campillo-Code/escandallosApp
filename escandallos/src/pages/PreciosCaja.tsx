@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, Trash2, X, Save } from "lucide-react";
+import SearchBar from "../components/SearchBar";
 
 interface CajaCategoria {
   id: number;
@@ -20,6 +21,7 @@ export default function PreciosCaja() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
 
   const load = async () => {
     try {
@@ -106,8 +108,12 @@ export default function PreciosCaja() {
         Configura el precio base y el importe del plus para cada categoría. El plus se aplica cuando un plato tiene elaboración extra.
       </p>
 
-      <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
-        <table className="w-full">
+      <>
+        <div className="bg-white rounded-xl shadow-sm border overflow-hidden">
+          <div className="p-4 pb-2">
+            <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar categoría..." />
+          </div>
+          <table className="w-full">
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría</th>
@@ -118,7 +124,7 @@ export default function PreciosCaja() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {categorias.map((cat) => (
+            {categorias.filter((cat) => cat.nombre.toLowerCase().includes(searchTerm.toLowerCase())).map((cat) => (
               <tr key={cat.id} className={`hover:bg-gray-50 ${!cat.activa ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3 font-medium text-gray-800">{cat.nombre}</td>
                 <td className="px-4 py-3 text-right font-mono">{cat.precio.toFixed(2)} €</td>
@@ -143,7 +149,8 @@ export default function PreciosCaja() {
             )}
           </tbody>
         </table>
-      </div>
+        </div>
+      </>
 
       {showForm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">

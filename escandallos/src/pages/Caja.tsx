@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ShoppingCart, Trash2, X, Clock, TrendingUp, FileText } from "lucide-react";
+import SearchableSelect from "../components/SearchableSelect";
 
 interface CajaCategoria {
   id: number;
@@ -49,7 +50,7 @@ export default function Caja() {
   const [ticket, setTicket] = useState<TicketItem[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedCategoria, setSelectedCategoria] = useState<CajaCategoria | null>(null);
-  const [selectedPlato, setSelectedPlato] = useState("");
+  const [selectedPlato, setSelectedPlato] = useState<number>(0);
   const [cantidad, setCantidad] = useState(1);
   const [usePlus, setUsePlus] = useState(false);
   const [notas, setNotas] = useState("");
@@ -66,10 +67,10 @@ export default function Caja() {
   };
 
   // Menu state
-  const [menuPrimero, setMenuPrimero] = useState("");
-  const [menuSegundo, setMenuSegundo] = useState("");
-  const [menuPostre, setMenuPostre] = useState("");
-  const [menuBebida, setMenuBebida] = useState("");
+  const [menuPrimero, setMenuPrimero] = useState<number>(0);
+  const [menuSegundo, setMenuSegundo] = useState<number>(0);
+  const [menuPostre, setMenuPostre] = useState<number>(0);
+  const [menuBebida, setMenuBebida] = useState<number>(0);
 
   const loadCategorias = async () => {
     try {
@@ -115,13 +116,13 @@ export default function Caja() {
 
   const openAddModal = (cat: CajaCategoria) => {
     setSelectedCategoria(cat);
-    setSelectedPlato("");
+    setSelectedPlato(0);
     setCantidad(1);
     setUsePlus(false);
-    setMenuPrimero("");
-    setMenuSegundo("");
-    setMenuPostre("");
-    setMenuBebida("");
+    setMenuPrimero(0);
+    setMenuSegundo(0);
+    setMenuPostre(0);
+    setMenuBebida(0);
     setShowAddModal(true);
     loadPlatos(cat.id);
   };
@@ -141,19 +142,19 @@ export default function Caja() {
       const catName = selectedCategoria.nombre;
 
       if (menuPrimero) {
-        const p = platos.find(p => p.id === Number(menuPrimero));
+        const p = platos.find(p => p.id === menuPrimero);
         items.push({ categoria: catName, descripcion: `Primero: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
       }
       if (menuSegundo) {
-        const p = platos.find(p => p.id === Number(menuSegundo));
+        const p = platos.find(p => p.id === menuSegundo);
         items.push({ categoria: catName, descripcion: `Segundo: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
       }
       if (menuPostre) {
-        const p = platos.find(p => p.id === Number(menuPostre));
+        const p = platos.find(p => p.id === menuPostre);
         items.push({ categoria: catName, descripcion: `Postre: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
       }
       if (menuBebida) {
-        const p = platos.find(p => p.id === Number(menuBebida));
+        const p = platos.find(p => p.id === menuBebida);
         items.push({ categoria: catName, descripcion: `Bebida: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
       }
 
@@ -167,7 +168,7 @@ export default function Caja() {
     } else {
       // Regular category
       if (!selectedPlato) return;
-      const p = platos.find(p => p.id === Number(selectedPlato));
+      const p = platos.find(p => p.id === selectedPlato);
       if (!p) return;
       const precio = getPrecio();
       const subtotal = precio * cantidad;
@@ -388,35 +389,39 @@ export default function Caja() {
                   <p className="text-sm text-gray-500">Selecciona los platos del menú:</p>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Primero *</label>
-                    <select value={menuPrimero} onChange={(e) => setMenuPrimero(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                      <option value="">Seleccionar...</option>
-                      {getMenuPlatos("primero").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={getMenuPlatos("primero").map(p => ({ value: p.id, label: p.nombre }))}
+                      value={menuPrimero}
+                      onChange={setMenuPrimero}
+                      placeholder="Seleccionar..."
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Segundo *</label>
-                    <select value={menuSegundo} onChange={(e) => setMenuSegundo(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                      <option value="">Seleccionar...</option>
-                      {getMenuPlatos("segundo").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={getMenuPlatos("segundo").map(p => ({ value: p.id, label: p.nombre }))}
+                      value={menuSegundo}
+                      onChange={setMenuSegundo}
+                      placeholder="Seleccionar..."
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Postre *</label>
-                    <select value={menuPostre} onChange={(e) => setMenuPostre(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                      <option value="">Seleccionar...</option>
-                      {getMenuPlatos("postre").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={getMenuPlatos("postre").map(p => ({ value: p.id, label: p.nombre }))}
+                      value={menuPostre}
+                      onChange={setMenuPostre}
+                      placeholder="Seleccionar..."
+                    />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Bebida (opcional)</label>
-                    <select value={menuBebida} onChange={(e) => setMenuBebida(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                      <option value="">Ninguna</option>
-                      {getMenuPlatos("bebida").map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={getMenuPlatos("bebida").map(p => ({ value: p.id, label: p.nombre }))}
+                      value={menuBebida}
+                      onChange={setMenuBebida}
+                      placeholder="Ninguna"
+                    />
                   </div>
                   <div className="text-right text-sm text-gray-500">
                     Precio: <span className="font-bold text-gray-800">{selectedCategoria.precio.toFixed(2)} €</span>
@@ -426,11 +431,12 @@ export default function Caja() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Selecciona plato *</label>
-                    <select value={selectedPlato} onChange={(e) => setSelectedPlato(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                      <option value="">Seleccionar plato...</option>
-                      {platos.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={platos.map(p => ({ value: p.id, label: p.nombre }))}
+                      value={selectedPlato}
+                      onChange={setSelectedPlato}
+                      placeholder="Seleccionar plato..."
+                    />
                     {platos.length === 0 && (
                       <p className="text-xs text-orange-500 mt-1">No hay platos en esta categoría. Añádelos en Precios Caja → Platos.</p>
                     )}

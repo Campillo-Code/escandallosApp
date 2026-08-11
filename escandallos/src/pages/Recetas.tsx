@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft, FileText } from "lucide-react";
 import { exportRecetaPDF } from "../lib/exports";
 import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 
 const recetaSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
@@ -117,6 +119,7 @@ export default function Recetas() {
   const [recetaGuarniciones, setRecetaGuarniciones] = useState<RecetaGuarnicion[]>([]);
   const [costesGuarniciones, setCostesGuarniciones] = useState<CosteGuarnicion[]>([]);
   const [showGuarnForm, setShowGuarnForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const {
     register,
@@ -130,6 +133,7 @@ export default function Recetas() {
 
   const {
     register: registerIng,
+    control: controlIng,
     handleSubmit: handleSubmitIng,
     reset: resetIng,
     formState: { errors: errorsIng, isSubmitting: isSubmittingIng },
@@ -400,15 +404,19 @@ export default function Recetas() {
             <form onSubmit={handleSubmitIng(onSubmitIngrediente)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-                <select
-                  {...registerIng("ingrediente_id")}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Seleccionar...</option>
-                  {ingredientes.map((i) => (
-                    <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                  ))}
-                </select>
+                <Controller
+                  control={controlIng}
+                  name="ingrediente_id"
+                  rules={{ required: "Selecciona un ingrediente" }}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                      value={field.value ? Number(field.value) : 0}
+                      onChange={(val) => field.onChange(val)}
+                      placeholder="Seleccionar..."
+                    />
+                  )}
+                />
                 {errorsIng.ingrediente_id && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
               </div>
               <div>
@@ -887,7 +895,11 @@ export default function Recetas() {
         ) : recetas.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No hay recetas registradas</div>
         ) : (
-          <table className="w-full">
+          <>
+            <div className="p-4 pb-2">
+              <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar receta..." />
+            </div>
+            <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
@@ -900,7 +912,10 @@ export default function Recetas() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {recetas.map((r) => (
+              {recetas.filter((r) => {
+                const q = searchTerm.toLowerCase();
+                return !q || r.nombre.toLowerCase().includes(q) || (r.categoria ?? "").toLowerCase().includes(q);
+              }).map((r) => (
                 <tr
                   key={r.id}
                   className="hover:bg-gray-50 cursor-pointer"
@@ -946,6 +961,7 @@ export default function Recetas() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

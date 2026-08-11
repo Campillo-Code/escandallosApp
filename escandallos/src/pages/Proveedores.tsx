@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X } from "lucide-react";
+import SearchBar from "../components/SearchBar";
 
 const proveedorSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
@@ -31,6 +32,7 @@ export default function Proveedores() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const {
     register,
@@ -203,7 +205,11 @@ export default function Proveedores() {
         ) : proveedores.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No hay proveedores registrados</div>
         ) : (
-          <table className="w-full">
+          <>
+            <div className="p-4 pb-2">
+              <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar proveedor..." />
+            </div>
+            <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
@@ -214,7 +220,10 @@ export default function Proveedores() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {proveedores.map((p) => (
+              {proveedores.filter((p) => {
+                const q = searchTerm.toLowerCase();
+                return !q || p.nombre.toLowerCase().includes(q) || (p.contacto ?? "").toLowerCase().includes(q) || (p.email ?? "").toLowerCase().includes(q);
+              }).map((p) => (
                 <tr key={p.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 text-sm font-medium text-gray-800">{p.nombre}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">{p.contacto ?? "-"}</td>
@@ -238,6 +247,7 @@ export default function Proveedores() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

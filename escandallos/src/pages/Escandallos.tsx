@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft, FileText } from "lucide-react";
 import { exportRecetaPDF } from "../lib/exports";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 
 const recetaSchema = z.object({
@@ -135,6 +137,10 @@ export default function Recetas() {
   const [recetasBase, setRecetasBase] = useState<Receta[]>([]);
   const [tipoIngrediente, setTipoIngrediente] = useState<"ingrediente" | "receta">("ingrediente");
   const [ingredientesError, setIngredientesError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategoria, setSelectedCategoria] = useState<string | null>(null);
+
+  const categorias = [...new Set(recetas.map(r => r.categoria).filter(Boolean) as string[])].sort();
 
   const {
     register,
@@ -148,6 +154,7 @@ export default function Recetas() {
 
   const {
     register: registerIng,
+    control: controlIng,
     handleSubmit: handleSubmitIng,
     reset: resetIng,
     formState: { errors: errorsIng, isSubmitting: isSubmittingIng },
@@ -566,25 +573,33 @@ export default function Recetas() {
                       {tipoIngrediente === "ingrediente" ? "Ingrediente *" : "Receta base *"}
                     </label>
                     {tipoIngrediente === "ingrediente" ? (
-                      <select
-                        {...registerIng("ingrediente_id", { required: tipoIngrediente === "ingrediente" ? "Selecciona un ingrediente" : false })}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">Seleccionar...</option>
-                        {ingredientes.map((i) => (
-                          <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
-                        ))}
-                      </select>
+                      <Controller
+                        control={controlIng}
+                        name="ingrediente_id"
+                        rules={{ required: tipoIngrediente === "ingrediente" ? "Selecciona un ingrediente" : false }}
+                        render={({ field }) => (
+                          <SearchableSelect
+                            options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                            value={field.value ? Number(field.value) : 0}
+                            onChange={(val) => field.onChange(val)}
+                            placeholder="Seleccionar..."
+                          />
+                        )}
+                      />
                     ) : (
-                      <select
-                        {...registerIng("sub_receta_id", { required: tipoIngrediente === "receta" ? "Selecciona una receta base" : false })}
-                        className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        <option value="">Seleccionar receta base...</option>
-                        {recetasBase.filter(rb => rb.id !== editingId).map((rb) => (
-                          <option key={rb.id} value={rb.id}>{rb.nombre} ({rb.porciones} ud.)</option>
-                        ))}
-                      </select>
+                      <Controller
+                        control={controlIng}
+                        name="sub_receta_id"
+                        rules={{ required: tipoIngrediente === "receta" ? "Selecciona una receta base" : false }}
+                        render={({ field }) => (
+                          <SearchableSelect
+                            options={recetasBase.filter(rb => rb.id !== editingId).map(rb => ({ value: rb.id, label: `${rb.nombre} (${rb.porciones} ud.)` }))}
+                            value={field.value ? Number(field.value) : 0}
+                            onChange={(val) => field.onChange(val)}
+                            placeholder="Seleccionar receta base..."
+                          />
+                        )}
+                      />
                     )}
                     {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
                     {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{errorsIng.sub_receta_id.message}</p>}
@@ -1093,7 +1108,25 @@ export default function Recetas() {
         ) : recetas.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No hay escandallos registrados</div>
         ) : (
-          <table className="w-full">
+          <>
+            <div className="p-4 border-b space-y-3">
+              <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar escandallo..." />
+              {categorias.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setSelectedCategoria(null)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedCategoria === null ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    Todos
+                  </button>
+                  {categorias.map(cat => (
+                    <button key={cat} onClick={() => setSelectedCategoria(selectedCategoria === cat ? null : cat)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedCategoria === cat ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
@@ -1106,7 +1139,11 @@ export default function Recetas() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {recetas.map((r) => (
+              {recetas.filter((r) => {
+                if (selectedCategoria && r.categoria !== selectedCategoria) return false;
+                const q = searchTerm.toLowerCase();
+                return !q || r.nombre.toLowerCase().includes(q) || (r.categoria ?? "").toLowerCase().includes(q);
+              }).map((r) => (
                 <tr
                   key={r.id}
                   className="hover:bg-gray-50 cursor-pointer"
@@ -1152,6 +1189,7 @@ export default function Recetas() {
               ))}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

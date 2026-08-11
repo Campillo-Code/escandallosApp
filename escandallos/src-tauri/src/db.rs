@@ -283,6 +283,35 @@ async fn run_migrations(pool: &MySqlPool) {
             FOREIGN KEY (receta_id) REFERENCES recetas(id) ON DELETE CASCADE
         )"
     ).execute(pool).await;
+
+    // DESPIECE: Create despieces table (definition of how to break down an ingredient)
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS despieces (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nombre VARCHAR(255) NOT NULL,
+            ingrediente_entrada_id INT NOT NULL,
+            cantidad_entrada DECIMAL(12,2) NOT NULL DEFAULT 1,
+            unidad_entrada VARCHAR(20) NOT NULL,
+            notas TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_desp_entrada (ingrediente_entrada_id)
+        )"
+    ).execute(pool).await;
+
+    // DESPIECE: Create despiece_salidas table (output pieces from a breakdown)
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS despiece_salidas (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            despiece_id INT NOT NULL,
+            ingrediente_id INT NOT NULL,
+            porcentaje DECIMAL(5,2),
+            cantidad DECIMAL(12,2),
+            unidad VARCHAR(20) NOT NULL DEFAULT 'g',
+            notas TEXT,
+            KEY idx_ds_despiece (despiece_id),
+            KEY idx_ds_ingrediente (ingrediente_id)
+        )"
+    ).execute(pool).await;
 }
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {

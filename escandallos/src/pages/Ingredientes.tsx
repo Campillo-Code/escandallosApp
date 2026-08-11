@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ArrowRightLeft, FileSpreadsheet } from "lucide-react";
 import { exportIngredientesExcel } from "../lib/exports";
 import { ALERGENOS, parseAlergenos, serializeAlergenos, getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
+import SearchBar from "../components/SearchBar";
 
 const ingredienteSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
@@ -47,6 +48,10 @@ export default function Ingredientes() {
   const [convTo, setConvTo] = useState("g");
   const [convResult, setConvResult] = useState<string | null>(null);
   const [selectedAlergenos, setSelectedAlergenos] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategoria, setSelectedCategoria] = useState<string | null>(null);
+
+  const categorias = [...new Set(ingredientes.map(i => i.categoria).filter(Boolean) as string[])].sort();
 
   const {
     register,
@@ -349,7 +354,25 @@ export default function Ingredientes() {
         ) : ingredientes.length === 0 ? (
           <div className="p-6 text-center text-gray-500">No hay ingredientes registrados</div>
         ) : (
-          <table className="w-full">
+          <>
+            <div className="p-4 border-b space-y-3">
+              <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar ingrediente..." />
+              {categorias.length > 0 && (
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setSelectedCategoria(null)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedCategoria === null ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    Todos
+                  </button>
+                  {categorias.map(cat => (
+                    <button key={cat} onClick={() => setSelectedCategoria(selectedCategoria === cat ? null : cat)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${selectedCategoria === cat ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
@@ -362,7 +385,11 @@ export default function Ingredientes() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {ingredientes.map((ing) => {
+              {ingredientes.filter((ing) => {
+                if (selectedCategoria && ing.categoria !== selectedCategoria) return false;
+                const q = searchTerm.toLowerCase();
+                return !q || ing.nombre.toLowerCase().includes(q) || (ing.categoria ?? "").toLowerCase().includes(q) || (ing.proveedor_nombre ?? "").toLowerCase().includes(q);
+              }).map((ing) => {
                 const alergenos = parseAlergenos(ing.alergenos);
                 return (
                   <tr key={ing.id} className="hover:bg-gray-50">
@@ -411,6 +438,7 @@ export default function Ingredientes() {
               })}
             </tbody>
           </table>
+          </>
         )}
       </div>
     </div>

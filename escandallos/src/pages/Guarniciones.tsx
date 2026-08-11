@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft } from "lucide-react";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 
 const guarnicionSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio"),
@@ -43,9 +45,10 @@ export default function Guarniciones() {
   const [guarnIngredientes, setGuarnIngredientes] = useState<GuarnicionIngrediente[]>([]);
   const [coste, setCoste] = useState<CosteGuarnicion | null>(null);
   const [showIngForm, setShowIngForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<GuarnicionFormData>({ resolver: zodResolver(guarnicionSchema) });
-  const { register: registerIng, handleSubmit: handleSubmitIng, reset: resetIng, formState: { errors: errorsIng, isSubmitting: isSubmittingIng } } = useForm<IngredienteFormData>({ resolver: zodResolver(ingredienteSchema) });
+  const { register: registerIng, control: controlIng, handleSubmit: handleSubmitIng, reset: resetIng, formState: { errors: errorsIng, isSubmitting: isSubmittingIng } } = useForm<IngredienteFormData>({ resolver: zodResolver(ingredienteSchema) });
 
   const loadGuarniciones = async () => { try { setGuarniciones(await invoke("get_guarniciones")); } catch (e) { console.error(e); } finally { setLoading(false); } };
   const loadIngredientes = async () => { try { setIngredientes(await invoke("get_ingredientes")); } catch (e) { console.error(e); } };
@@ -113,10 +116,19 @@ export default function Guarniciones() {
             <form onSubmit={handleSubmitIng(onSubmitIng)} className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
-                <select {...registerIng("ingrediente_id")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                  <option value="">Seleccionar...</option>
-                  {ingredientes.map(i => <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>)}
-                </select>
+                <Controller
+                  control={controlIng}
+                  name="ingrediente_id"
+                  rules={{ required: "Selecciona un ingrediente" }}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                      value={field.value ? Number(field.value) : 0}
+                      onChange={(val) => field.onChange(val)}
+                      placeholder="Seleccionar..."
+                    />
+                  )}
+                />
                 {errorsIng.ingrediente_id && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
               </div>
               <div>
@@ -264,32 +276,37 @@ export default function Guarniciones() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
-          guarniciones.length === 0 ? <div className="p-6 text-center text-gray-500">No hay guarniciones</div> : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Descripción</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {guarniciones.map(g => (
-                  <tr key={g.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedGuarnicion(g)}>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-800">{g.nombre}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{g.descripcion ?? "-"}</td>
-                    <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => handleEdit(g)} className="text-blue-600 hover:text-blue-800 mr-3"><Pencil size={16} /></button>
-                      <button onClick={() => handleDelete(g.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
-                    </td>
+      <>
+        <div className="p-4 pb-2">
+          <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar guarnición..." />
+        </div>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+            guarniciones.length === 0 ? <div className="p-6 text-center text-gray-500">No hay guarniciones</div> : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Descripción</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {guarniciones.filter(g => g.nombre.toLowerCase().includes(searchTerm.toLowerCase())).map(g => (
+                    <tr key={g.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedGuarnicion(g)}>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{g.nombre}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{g.descripcion ?? "-"}</td>
+                      <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => handleEdit(g)} className="text-blue-600 hover:text-blue-800 mr-3"><Pencil size={16} /></button>
+                        <button onClick={() => handleDelete(g.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+      </>
     </div>
   );
 }

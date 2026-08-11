@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Trash2, Download, ChevronDown, ChevronRight } from "lucide-react";
+import SearchBar from "../components/SearchBar";
 import DateInput from "../components/DateInput";
 
 interface Venta { id: number; fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; }
@@ -50,6 +51,8 @@ export default function Ventas() {
   const [colMapping, setColMapping] = useState({ fecha: 0, plato: 1, cantidad: 2, precio: 3, total: 4 });
   const [delimiter, setDelimiter] = useState(";");
   const [importing, setImporting] = useState(false);
+
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadVentas = async () => {
     try {
@@ -195,37 +198,42 @@ export default function Ventas() {
 
       {/* Tab: Líneas de venta */}
       {tab === "historial" && (
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
-            ventas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay ventas registradas</div> : (
-              <table className="w-full">
-                <thead className="bg-gray-50 border-b border-gray-200">
-                  <tr>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Plato</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio ud.</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Total</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {ventas.map(v => (
-                    <tr key={v.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm text-gray-600">{v.fecha}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{v.plato_nombre}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.cantidad}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.precio_unitario.toFixed(2)}€</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{v.total_venta.toFixed(2)}€</td>
-                      <td className="px-4 py-3 text-sm text-right">
-                        <button onClick={() => handleDelete(v.id)} className="text-red-600 hover:text-red-800"><Trash2 size={14} /></button>
-                      </td>
+        <>
+          <div className="p-4 pb-2">
+            <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar venta..." />
+          </div>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+              ventas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay ventas registradas</div> : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Plato</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio ud.</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Total</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-        </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {ventas.filter(v => !searchTerm || v.plato_nombre.toLowerCase().includes(searchTerm.toLowerCase())).map(v => (
+                      <tr key={v.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 text-sm text-gray-600">{v.fecha}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-800">{v.plato_nombre}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.cantidad}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.precio_unitario.toFixed(2)}€</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{v.total_venta.toFixed(2)}€</td>
+                        <td className="px-4 py-3 text-sm text-right">
+                          <button onClick={() => handleDelete(v.id)} className="text-red-600 hover:text-red-800"><Trash2 size={14} /></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+          </div>
+        </>
       )}
 
       {/* Tab: Tickets */}

@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
 import { Pencil, Trash2, Plus, X, ChevronLeft, FileText } from "lucide-react";
+import SearchBar from "../components/SearchBar";
+import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
 import { exportFichaTecnicaPDF } from "../lib/exports";
 import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
@@ -48,8 +50,9 @@ export default function FichasTecnicas() {
   const [fichaIngredientes, setFichaIngredientes] = useState<RecetaIngrediente[]>([]);
   const [fichaAlergenos, setFichaAlergenos] = useState<string[]>([]);
   const [fotosPreview, setFotosPreview] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState("");
 
-  const { register, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) });
+  const { register, control, handleSubmit, reset, setValue, watch, formState: { errors, isSubmitting } } = useForm<FormData>({ resolver: zodResolver(schema) });
   const fechaValue = watch("fecha") ?? "";
 
   const loadFichas = async () => { try { setFichas(await invoke("get_fichas_tecnicas")); } catch (e) { console.error(e); } finally { setLoading(false); } };
@@ -285,10 +288,19 @@ export default function FichasTecnicas() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Escandallo *</label>
-                <select {...register("receta_id")} disabled={!!editingId} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100">
-                  <option value="">Seleccionar...</option>
-                  {recetas.map(r => <option key={r.id} value={r.id}>{r.nombre}</option>)}
-                </select>
+                <Controller
+                  control={control}
+                  name="receta_id"
+                  rules={{ required: "Selecciona un escandallo" }}
+                  render={({ field }) => (
+                    <SearchableSelect
+                      options={recetas.map(r => ({ value: r.id, label: r.nombre }))}
+                      value={field.value ? Number(field.value) : 0}
+                      onChange={(val) => field.onChange(val)}
+                      placeholder="Seleccionar..."
+                    />
+                  )}
+                />
                 {errors.receta_id && <p className="text-red-500 text-sm mt-1">{errors.receta_id.message}</p>}
               </div>
               <div>
@@ -351,34 +363,42 @@ export default function FichasTecnicas() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
-          fichas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay fichas técnicas</div> : (
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Código</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Escandallo</th>
-                  <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
-                  <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {fichas.map(f => (
-                  <tr key={f.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedFicha(f)}>
-                    <td className="px-4 py-3 text-sm text-gray-600">{f.codigo_interno || "—"}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-gray-800">{f.receta_nombre}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">{f.fecha || "—"}</td>
-                    <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
-                      <button onClick={() => handleEdit(f)} className="text-blue-600 hover:text-blue-800 mr-3"><Pencil size={16} /></button>
-                      <button onClick={() => handleDelete(f.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
-                    </td>
+      <>
+        <div className="p-4 pb-2">
+          <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar ficha técnica..." />
+        </div>
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
+            fichas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay fichas técnicas</div> : (
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Código</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Escandallo</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Fecha</th>
+                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-      </div>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {fichas.filter(f =>
+                    (f.receta_nombre ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (f.codigo_interno ?? "").toLowerCase().includes(searchTerm.toLowerCase())
+                  ).map(f => (
+                    <tr key={f.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedFicha(f)}>
+                      <td className="px-4 py-3 text-sm text-gray-600">{f.codigo_interno || "—"}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{f.receta_nombre}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{f.fecha || "—"}</td>
+                      <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => handleEdit(f)} className="text-blue-600 hover:text-blue-800 mr-3"><Pencil size={16} /></button>
+                        <button onClick={() => handleDelete(f.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+        </div>
+      </>
     </div>
   );
 }
