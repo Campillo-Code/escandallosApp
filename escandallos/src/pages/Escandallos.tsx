@@ -139,8 +139,74 @@ export default function Recetas() {
   const [ingredientesError, setIngredientesError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoria, setSelectedCategoria] = useState<string | null>(null);
+  const [showRecalculo, setShowRecalculo] = useState(false);
+  const [recalculoPorciones, setRecalculoPorciones] = useState(1);
+  const [recalculoIngredientes, setRecalculoIngredientes] = useState<{
+    id: number;
+    nombre: string;
+    cantidadOriginal: number;
+    cantidad: number;
+    unidad: string;
+    merma: number;
+    precioUnitario: number | null;
+  }[]>([]);
 
   const categorias = [...new Set(recetas.map(r => r.categoria).filter(Boolean) as string[])].sort();
+
+  const openRecalculo = () => {
+    if (!costeReceta) return;
+    setRecalculoPorciones(selectedReceta?.porciones ?? 1);
+    setRecalculoIngredientes(
+      costeReceta.ingredientes.map((ci, idx) => ({
+        id: idx,
+        nombre: ci.ingrediente_nombre,
+        cantidadOriginal: ci.cantidad,
+        cantidad: ci.cantidad,
+        unidad: ci.unidad,
+        merma: ci.merma_porcentaje,
+        precioUnitario: ci.precio_por_unidad_receta,
+      }))
+    );
+    setShowRecalculo(true);
+  };
+
+  const recalculoCosteTotal = recalculoIngredientes.reduce((sum, ci) => {
+    if (ci.precioUnitario == null) return sum;
+    return sum + ci.cantidad * ci.precioUnitario * (1 + ci.merma / 100);
+  }, 0);
+
+  const recalculoCostePorcion = recalculoPorciones > 0 ? recalculoCosteTotal / recalculoPorciones : recalculoCosteTotal;
+
+  const recalculoFoodCost = selectedReceta?.precio_venta
+    ? (recalculoCostePorcion / selectedReceta.precio_venta) * 100
+    : null;
+
+  const recalculoMargen = selectedReceta?.precio_venta
+    ? ((selectedReceta.precio_venta - recalculoCostePorcion) / selectedReceta.precio_venta) * 100
+    : null;
+
+  const recalculoPrecioSugerido = (() => {
+    const margen = selectedReceta?.margen_porcentaje ?? 50;
+    return margen < 100 && margen > 0 ? recalculoCostePorcion / (1 - margen / 100) : recalculoCostePorcion * 2;
+  })();
+
+  const handleRecalculoCantidadChange = (id: number, nuevaCantidad: number) => {
+    setRecalculoIngredientes(prev =>
+      prev.map(ci => ci.id === id ? { ...ci, cantidad: nuevaCantidad } : ci)
+    );
+  };
+
+  const handleRecalculoPorcionesChange = (nuevasPorciones: number) => {
+    if (nuevasPorciones < 1) return;
+    const factor = nuevasPorciones / recalculoPorciones;
+    setRecalculoIngredientes(prev =>
+      prev.map(ci => ({
+        ...ci,
+        cantidad: Math.round(ci.cantidadOriginal * factor * 1000) / 1000,
+      }))
+    );
+    setRecalculoPorciones(nuevasPorciones);
+  };
 
   const {
     register,
@@ -221,17 +287,20 @@ export default function Recetas() {
 
   useEffect(() => {
     if (recetas.length > 0) {
+      let cancelled = false;
       const loadAll = async () => {
         const map: Record<number, string[]> = {};
         for (const r of recetas) {
+          if (cancelled) return;
           try {
             const data = await invoke<string[]>("get_receta_alergenos", { recetaId: r.id });
             map[r.id] = data;
           } catch { /* ignore */ }
         }
-        setAlergenosMap(map);
+        if (!cancelled) setAlergenosMap(map);
       };
-      loadAll();
+      const timer = setTimeout(loadAll, 300);
+      return () => { cancelled = true; clearTimeout(timer); };
     }
   }, [recetas]);
 
@@ -249,8 +318,11 @@ export default function Recetas() {
 
   useEffect(() => {
     if (showForm && editingId) {
-      loadRecetaIngredientes(editingId);
-      loadCosteReceta(editingId);
+      const alreadyLoaded = recetaIngredientes.length > 0 && recetaIngredientes[0]?.receta_id === editingId;
+      if (!alreadyLoaded) {
+        loadRecetaIngredientes(editingId);
+        loadCosteReceta(editingId);
+      }
     }
   }, [showForm, editingId]);
 
@@ -756,6 +828,13 @@ export default function Recetas() {
           </div>
           <div className="flex gap-2">
             <button
+              onClick={openRecalculo}
+              disabled={!costeReceta}
+              className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-40"
+            >
+              🧮 Recalcular
+            </button>
+            <button
               onClick={() => handleEdit(selectedReceta)}
               className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors text-sm"
             >
@@ -1192,6 +1271,140 @@ export default function Recetas() {
           </>
         )}
       </div>
+
+      {/* Modal Recálculo */}
+      {showRecalculo && selectedReceta && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">🧮 Recálculo: {selectedReceta.nombre}</h2>
+              <button onClick={() => setShowRecalculo(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 space-y-6">
+              {/* Porciones */}
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <div className="flex items-center gap-4">
+                  <label className="text-sm font-medium text-gray-700">Porciones originales:</label>
+                  <span className="font-bold text-gray-800">{selectedReceta.porciones}</span>
+                  <span className="text-gray-400">→</span>
+                  <label className="text-sm font-medium text-gray-700">Nuevas porciones:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={recalculoPorciones}
+                    onChange={(e) => handleRecalculoPorcionesChange(parseInt(e.target.value) || 1)}
+                    className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-center font-bold focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  {recalculoPorciones !== selectedReceta.porciones && (
+                    <span className="text-sm text-blue-600 font-medium">
+                      (×{(recalculoPorciones / selectedReceta.porciones).toFixed(2)})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Tabla de ingredientes */}
+              <div className="bg-white rounded-lg border overflow-hidden">
+                <table className="w-full">
+                  <thead className="bg-gray-50 border-b">
+                    <tr>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Ingrediente</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cant. Original</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Nueva Cant.</th>
+                      <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Unidad</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Merma</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio/ud</th>
+                      <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Coste</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {recalculoIngredientes.map((ci) => {
+                      const coste = ci.precioUnitario != null
+                        ? ci.cantidad * ci.precioUnitario * (1 + ci.merma / 100)
+                        : 0;
+                      return (
+                        <tr key={ci.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-800">{ci.nombre}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 text-right">{ci.cantidadOriginal}</td>
+                          <td className="px-4 py-3 text-right">
+                            <input
+                              type="number"
+                              step="0.001"
+                              min="0"
+                              value={ci.cantidad}
+                              onChange={(e) => handleRecalculoCantidadChange(ci.id, parseFloat(e.target.value) || 0)}
+                              className="w-28 border border-gray-300 rounded-lg px-2 py-1.5 text-sm text-right focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{ci.unidad}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 text-right">{ci.merma}%</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                            {ci.precioUnitario != null ? `${ci.precioUnitario.toFixed(4)} €` : <span className="text-red-400">Sin precio</span>}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-800 text-right font-medium">
+                            {ci.precioUnitario != null ? `${coste.toFixed(2)} €` : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot className="bg-gray-50 border-t">
+                    <tr>
+                      <td colSpan={6} className="px-4 py-3 text-sm font-semibold text-gray-800 text-right">Coste total</td>
+                      <td className="px-4 py-3 text-sm font-bold text-gray-800 text-right">{recalculoCosteTotal.toFixed(2)} €</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Resumen de costes */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white rounded-lg border p-4">
+                  <p className="text-xs text-gray-500 mb-1">Coste/porción</p>
+                  <p className="text-xl font-bold text-gray-800">{recalculoCostePorcion.toFixed(2)} €</p>
+                  {recalculoPorciones !== selectedReceta.porciones && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Original: {costeReceta?.coste_porcion.toFixed(2)} €
+                    </p>
+                  )}
+                </div>
+                {recalculoFoodCost != null && (
+                  <div className="bg-white rounded-lg border p-4">
+                    <p className="text-xs text-gray-500 mb-1">Food Cost</p>
+                    <p className={`text-xl font-bold ${recalculoFoodCost < 30 ? "text-green-600" : recalculoFoodCost <= 35 ? "text-yellow-500" : "text-red-600"}`}>
+                      {recalculoFoodCost.toFixed(1)}%
+                    </p>
+                    {costeReceta?.food_cost_pct != null && (
+                      <p className="text-xs text-gray-400 mt-1">Original: {costeReceta.food_cost_pct.toFixed(1)}%</p>
+                    )}
+                  </div>
+                )}
+                {recalculoMargen != null && (
+                  <div className="bg-white rounded-lg border p-4">
+                    <p className="text-xs text-gray-500 mb-1">Margen real</p>
+                    <p className={`text-xl font-bold ${recalculoMargen >= 70 ? "text-green-600" : recalculoMargen >= 60 ? "text-yellow-500" : "text-red-600"}`}>
+                      {recalculoMargen.toFixed(1)}%
+                    </p>
+                  </div>
+                )}
+                <div className="bg-white rounded-lg border p-4">
+                  <p className="text-xs text-gray-500 mb-1">Precio sugerido</p>
+                  <p className="text-xl font-bold text-blue-600">{recalculoPrecioSugerido.toFixed(2)} €</p>
+                  {selectedReceta.precio_venta != null && (
+                    <p className="text-xs text-gray-400 mt-1">Actual: {selectedReceta.precio_venta.toFixed(2)} €</p>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button onClick={() => setShowRecalculo(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

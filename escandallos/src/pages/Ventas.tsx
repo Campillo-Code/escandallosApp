@@ -119,6 +119,15 @@ export default function Ventas() {
     try { await invoke("delete_venta", { id }); loadVentas(); } catch (e) { alert("Error: " + e); }
   };
 
+  const handleDeleteTicket = async (id: number) => {
+    if (!confirm("¿Eliminar este ticket y todas sus ventas asociadas?")) return;
+    try {
+      await invoke("delete_caja_ticket", { id });
+      loadTickets();
+      loadVentas();
+    } catch (e) { alert("Error: " + e); }
+  };
+
   const exportCSV = () => {
     const rows = tab === "tickets"
       ? tickets.flatMap(t => {
@@ -270,6 +279,13 @@ export default function Ventas() {
                           </span>
                         )}
                         <span className="font-bold text-gray-800 w-20 text-right shrink-0">{ticket.total.toFixed(2)} €</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteTicket(ticket.id); }}
+                          className="text-red-400 hover:text-red-600 shrink-0 ml-2"
+                          title="Eliminar ticket"
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                       {isExpanded && (
                         <div className="bg-gray-50 px-4 py-3 border-t border-gray-100 overflow-x-auto">

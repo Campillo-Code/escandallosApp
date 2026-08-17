@@ -114,7 +114,7 @@ export default function Caja() {
 
   const isMenu = (cat: CajaCategoria) => cat.nombre.toLowerCase().includes("men");
 
-  const openAddModal = (cat: CajaCategoria) => {
+  const openAddModal = async (cat: CajaCategoria) => {
     setSelectedCategoria(cat);
     setSelectedPlato(0);
     setCantidad(1);
@@ -124,7 +124,14 @@ export default function Caja() {
     setMenuPostre(0);
     setMenuBebida(0);
     setShowAddModal(true);
-    loadPlatos(cat.id);
+    if (isMenu(cat)) {
+      try {
+        const data = await invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: null });
+        setPlatos(data);
+      } catch (e) { console.error(e); }
+    } else {
+      loadPlatos(cat.id);
+    }
   };
 
   const getPrecio = () => {
@@ -215,9 +222,10 @@ export default function Caja() {
   };
 
   const getMenuPlatos = (catName: string) => {
-    const cat = categorias.find(c => c.nombre.toLowerCase().includes(catName.toLowerCase()));
-    if (!cat) return [];
-    return platos.filter(p => p.categoria_id === cat.id);
+    const cats = categorias.filter(c => c.nombre.toLowerCase().includes(catName.toLowerCase()));
+    if (cats.length === 0) return [];
+    const catIds = cats.map(c => c.id);
+    return platos.filter(p => catIds.includes(p.categoria_id));
   };
 
   return (
