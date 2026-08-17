@@ -108,11 +108,11 @@ interface RecetaGuarnicion {
 }
 
 const ingredienteRecetaSchema = z.object({
-  ingrediente_id: z.string().optional(),
-  sub_receta_id: z.string().optional(),
-  cantidad: z.string().min(1, "Cantidad obligatoria"),
+  ingrediente_id: z.any(),
+  sub_receta_id: z.any().optional(),
+  cantidad: z.any(),
   unidad: z.string().min(1, "Unidad obligatoria"),
-  merma_porcentaje: z.string(),
+  merma_porcentaje: z.any(),
   notas: z.string().optional(),
 });
 
@@ -141,8 +141,10 @@ export default function Recetas() {
   const [selectedCategoria, setSelectedCategoria] = useState<string | null>(null);
   const [showRecalculo, setShowRecalculo] = useState(false);
   const [recalculoPorciones, setRecalculoPorciones] = useState(1);
+  const [recalculoPorcionesOriginales, setRecalculoPorcionesOriginales] = useState(1);
   const [recalculoIngredientes, setRecalculoIngredientes] = useState<{
     id: number;
+    recetaIngredienteId: number;
     nombre: string;
     cantidadOriginal: number;
     cantidad: number;
@@ -154,18 +156,26 @@ export default function Recetas() {
   const categorias = [...new Set(recetas.map(r => r.categoria).filter(Boolean) as string[])].sort();
 
   const openRecalculo = () => {
-    if (!costeReceta) return;
-    setRecalculoPorciones(selectedReceta?.porciones ?? 1);
+    if (!costeReceta || recetaIngredientes.length === 0) return;
+    const porcionesOrig = selectedReceta?.porciones ?? 1;
+    setRecalculoPorciones(porcionesOrig);
+    setRecalculoPorcionesOriginales(porcionesOrig);
+    const costMap = new Map(costeReceta.ingredientes.map(ci => [ci.ingrediente_nombre, ci]));
     setRecalculoIngredientes(
-      costeReceta.ingredientes.map((ci, idx) => ({
-        id: idx,
-        nombre: ci.ingrediente_nombre,
-        cantidadOriginal: ci.cantidad,
-        cantidad: ci.cantidad,
-        unidad: ci.unidad,
-        merma: ci.merma_porcentaje,
-        precioUnitario: ci.precio_por_unidad_receta,
-      }))
+      recetaIngredientes.map((ri, idx) => {
+        const nombre = ri.sub_receta_id ? (ri.sub_receta_nombre ?? `Receta #${ri.sub_receta_id}`) : (ri.ingrediente_nombre ?? `Ingrediente #${ri.ingrediente_id}`);
+        const costeData = costMap.get(nombre);
+        return {
+          id: idx,
+          recetaIngredienteId: ri.id,
+          nombre,
+          cantidadOriginal: ri.cantidad,
+          cantidad: ri.cantidad,
+          unidad: ri.unidad,
+          merma: ri.merma_porcentaje,
+          precioUnitario: costeData?.precio_por_unidad_receta ?? null,
+        };
+      })
     );
     setShowRecalculo(true);
   };
@@ -198,7 +208,7 @@ export default function Recetas() {
 
   const handleRecalculoPorcionesChange = (nuevasPorciones: number) => {
     if (nuevasPorciones < 1) return;
-    const factor = nuevasPorciones / recalculoPorciones;
+    const factor = nuevasPorciones / recalculoPorcionesOriginales;
     setRecalculoIngredientes(prev =>
       prev.map(ci => ({
         ...ci,
@@ -206,6 +216,38 @@ export default function Recetas() {
       }))
     );
     setRecalculoPorciones(nuevasPorciones);
+  };
+
+  const handleAplicarRecalculo = async () => {
+    if (!selectedReceta) return;
+    const tieneCambios = recalculoPorciones !== selectedReceta.porciones ||
+      recalculoIngredientes.some(ci => ci.cantidad !== ci.cantidadOriginal);
+    if (!tieneCambios) { setShowRecalculo(false); return; }
+    const invalidos = recalculoIngredientes.filter(ci => ci.cantidad <= 0);
+    if (invalidos.length > 0) {
+      alert(`No se pueden guardar cantidades iguales a 0:\n${invalidos.map(ci => `• ${ci.nombre}: ${ci.cantidad}`).join("\n")}`);
+      return;
+    }
+    if (!confirm(`¿Aplicar cambios a "${selectedReceta.nombre}"?\n${recalculoPorciones !== selectedReceta.porciones ? `• Porciones: ${selectedReceta.porciones} → ${recalculoPorciones}\n` : ""}${recalculoIngredientes.filter(ci => ci.cantidad !== ci.cantidadOriginal).map(ci => `• ${ci.nombre}: ${ci.cantidadOriginal} → ${ci.cantidad} ${ci.unidad}`).join("\n")}`)) return;
+    try {
+      await invoke("update_receta_completa", {
+        recetaId: selectedReceta.id,
+        nuevasPorciones: recalculoPorciones,
+        ingredientes: recalculoIngredientes.map(ci => ({
+          receta_ingrediente_id: ci.recetaIngredienteId,
+          nueva_cantidad: ci.cantidad,
+        })),
+      });
+      setShowRecalculo(false);
+      const updatedRecetas = await invoke<Receta[]>("get_recetas");
+      setRecetas(updatedRecetas);
+      const found = updatedRecetas.find(r => r.id === selectedReceta.id);
+      if (found) setSelectedReceta(found);
+      loadRecetaIngredientes(selectedReceta.id);
+      loadCosteReceta(selectedReceta.id);
+    } catch (e) {
+      alert("Error al guardar: " + e);
+    }
   };
 
   const {
@@ -379,19 +421,22 @@ export default function Recetas() {
   const onSubmitIngrediente = async (data: IngredienteRecetaFormData) => {
     const recetaId = editingId || selectedReceta?.id;
     if (!recetaId) return;
-    if (tipoIngrediente === "ingrediente" && !data.ingrediente_id) { alert("Selecciona un ingrediente"); return; }
-    if (tipoIngrediente === "receta" && !data.sub_receta_id) { alert("Selecciona una receta base"); return; }
+    const ingredienteId = tipoIngrediente === "ingrediente" ? Number(data.ingrediente_id) : null;
+    const subRecetaId = tipoIngrediente === "receta" ? Number(data.sub_receta_id) : null;
+    const cantidad = Number(data.cantidad);
+    if (tipoIngrediente === "ingrediente" && (!ingredienteId || ingredienteId === 0)) { alert("Selecciona un ingrediente"); return; }
+    if (tipoIngrediente === "receta" && (!subRecetaId || subRecetaId === 0)) { alert("Selecciona una receta base"); return; }
+    if (!cantidad || cantidad <= 0) { alert("Introduce una cantidad válida"); return; }
     const input = {
       receta_id: recetaId,
-      ingrediente_id: tipoIngrediente === "ingrediente" ? parseInt(data.ingrediente_id!) : null,
-      sub_receta_id: tipoIngrediente === "receta" ? parseInt(data.sub_receta_id!) : null,
-      cantidad: parseFloat(data.cantidad),
+      ingrediente_id: ingredienteId,
+      sub_receta_id: subRecetaId,
+      cantidad,
       unidad: data.unidad,
-      merma_porcentaje: parseFloat(data.merma_porcentaje) || 0,
+      merma_porcentaje: Number(data.merma_porcentaje) || 0,
       notas: data.notas || null,
       orden: recetaIngredientes.length,
     };
-    console.log("Añadiendo:", input);
     try {
       await invoke("add_receta_ingrediente", { input });
       setShowIngredienteForm(false);
@@ -673,8 +718,8 @@ export default function Recetas() {
                         )}
                       />
                     )}
-                    {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{errorsIng.ingrediente_id.message}</p>}
-                    {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{errorsIng.sub_receta_id.message}</p>}
+                    {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.ingrediente_id.message)}</p>}
+                    {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.sub_receta_id.message)}</p>}
                     {recetasBase.length === 0 && tipoIngrediente === "receta" && <p className="text-xs text-gray-400 mt-1">No hay recetas marcadas como base</p>}
                   </div>
                   <div>
@@ -685,7 +730,7 @@ export default function Recetas() {
                       {...registerIng("cantidad")}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
-                    {errorsIng.cantidad && <p className="text-red-500 text-sm mt-1">{errorsIng.cantidad.message}</p>}
+                    {errorsIng.cantidad && <p className="text-red-500 text-sm mt-1">{String(errorsIng.cantidad.message)}</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Unidad *</label>
@@ -1185,7 +1230,7 @@ export default function Recetas() {
                     />
                     {recalculoPorciones !== selectedReceta.porciones && (
                       <span className="text-sm text-blue-600 font-medium">
-                        (×{(recalculoPorciones / selectedReceta.porciones).toFixed(2)})
+                        (×{(recalculoPorciones / recalculoPorcionesOriginales).toFixed(2)})
                       </span>
                     )}
                   </div>
@@ -1239,7 +1284,7 @@ export default function Recetas() {
                   <div className="bg-white rounded-lg border p-4">
                     <p className="text-xs text-gray-500 mb-1">Coste/porción</p>
                     <p className="text-xl font-bold text-gray-800">{recalculoCostePorcion.toFixed(2)} €</p>
-                    {recalculoPorciones !== selectedReceta.porciones && (
+                    {recalculoPorciones !== recalculoPorcionesOriginales && (
                       <p className="text-xs text-gray-400 mt-1">Original: {costeReceta?.coste_porcion.toFixed(2)} €</p>
                     )}
                   </div>
@@ -1271,12 +1316,16 @@ export default function Recetas() {
                   </div>
                 </div>
               </div>
-              <div className="flex justify-end px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-                <button onClick={() => setShowRecalculo(false)}
-                  className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
-                  Cerrar
-                </button>
-              </div>
+            <div className="flex justify-between px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button onClick={() => setShowRecalculo(false)}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors">
+                Cerrar
+              </button>
+              <button onClick={handleAplicarRecalculo}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium">
+                Aplicar cambios
+              </button>
+            </div>
             </div>
           </div>
         )}

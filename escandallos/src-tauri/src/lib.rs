@@ -339,6 +339,44 @@ async fn delete_receta(id: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+pub struct IngredienteRecalculo {
+    pub receta_ingrediente_id: i64,
+    pub nueva_cantidad: f64,
+}
+
+#[tauri::command]
+async fn update_receta_completa(receta_id: i64, nuevas_porciones: i32, ingredientes: Vec<IngredienteRecalculo>) -> Result<(), String> {
+    let pool = &db::get_pool();
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    sqlx::query("UPDATE recetas SET porciones = ? WHERE id = ?")
+        .bind(nuevas_porciones)
+        .bind(receta_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for ing in &ingredientes {
+        if ing.nueva_cantidad <= 0.0 {
+            return Err(format!("Cantidad inválida para ingrediente {}: {}", ing.receta_ingrediente_id, ing.nueva_cantidad));
+        }
+        let result = sqlx::query("UPDATE receta_ingredientes SET cantidad = ? WHERE id = ? AND receta_id = ?")
+            .bind(ing.nueva_cantidad)
+            .bind(ing.receta_ingrediente_id)
+            .bind(receta_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+        if result.rows_affected() == 0 {
+            eprintln!("WARNING: No se actualizó ingrediente id={} para receta_id={}", ing.receta_ingrediente_id, receta_id);
+        }
+    }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ========================================
 // INGREDIENTES DE RECETA
 // ========================================
@@ -423,7 +461,8 @@ async fn add_receta_ingrediente(input: RecetaIngredienteInput) -> Result<i64, St
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
-    Ok(result.last_insert_id() as i64)
+    let new_id = result.last_insert_id() as i64;
+    Ok(new_id)
 }
 
 #[tauri::command]
@@ -555,7 +594,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
 
     // Fetch ALL receta_ingredientes (regular ingredients + sub-recipes)
     let all_ri_rows = sqlx::query(
-        "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE), ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) FROM receta_ingredientes ri WHERE ri.receta_id = ?"
+        "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje FROM receta_ingredientes ri WHERE ri.receta_id = ?"
     )
     .bind(receta_id)
     .fetch_all(pool)
@@ -3305,6 +3344,7 @@ pub fn run() {
             create_receta,
             update_receta,
             delete_receta,
+            update_receta_completa,
             get_receta_ingredientes,
             add_receta_ingrediente,
             delete_receta_ingrediente,
