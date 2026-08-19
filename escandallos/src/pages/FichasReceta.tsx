@@ -8,10 +8,11 @@ import SearchBar from "../components/SearchBar";
 import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
 import { exportFichaRecetaPDF } from "../lib/exports";
+import { compressImage } from "../lib/imageCompress";
 import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 
 const schema = z.object({
-  receta_id: z.string().min(1, "Selecciona un escandallo"),
+  receta_id: z.any(),
   catalogado_en: z.string().optional(),
   fecha: z.string().optional(),
   fotos: z.string().optional(),
@@ -43,6 +44,7 @@ interface Receta {
   es_base: boolean;
   precio_venta: number | null;
   margen_porcentaje: number | null;
+  peso_por_racion: number | null;
 }
 
 interface RecetaIngrediente {
@@ -178,6 +180,7 @@ export default function FichasReceta() {
               food_cost_pct: fichaCoste?.food_cost_pct ?? null,
               margen_real_pct: fichaCoste?.margen_real_pct ?? null,
               margen_porcentaje: receta?.margen_porcentaje ?? null,
+              peso_por_racion: receta?.peso_por_racion ?? null,
               notas_adicionales: selectedFicha.notas_adicionales,
               fotos: (() => { try { return JSON.parse(selectedFicha.fotos ?? "null"); } catch { return selectedFicha.fotos; } })(),
             });
@@ -214,9 +217,13 @@ export default function FichasReceta() {
               <p className="text-xs font-bold text-indigo-900">PRECIO/PORCIÓN</p>
               <p className="text-sm text-indigo-800">{receta?.precio_venta != null ? `${receta.precio_venta.toFixed(2)} €` : "—"}</p>
             </div>
-            <div className="bg-indigo-200 px-4 py-2 text-center">
+            <div className="bg-indigo-200 px-4 py-2 text-center border-r">
               <p className="text-xs font-bold text-indigo-900">TIEMPO ELABOR.</p>
               <p className="text-sm text-indigo-800">{receta?.tiempo_preparacion != null ? `${receta.tiempo_preparacion} min` : "—"}</p>
+            </div>
+            <div className="bg-indigo-200 px-4 py-2 text-center">
+              <p className="text-xs font-bold text-indigo-900">PESO/RACIÓN</p>
+              <p className="text-sm text-indigo-800">{receta?.peso_por_racion != null ? `${receta.peso_por_racion} g` : "—"}</p>
             </div>
           </div>
 
@@ -441,7 +448,7 @@ export default function FichasReceta() {
                     />
                   )}
                 />
-                {errors.receta_id && <p className="text-red-500 text-sm mt-1">{errors.receta_id.message}</p>}
+                {errors.receta_id && <p className="text-red-500 text-sm mt-1">{String(errors.receta_id.message)}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Catalogado en</label>
@@ -460,16 +467,16 @@ export default function FichasReceta() {
                     <button type="button" onClick={() => { setFotosPreview(""); setValue("fotos", ""); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"><X size={14} /></button>
                   </div>
                 )}
-                <input type="file" accept="image/*" onChange={(e) => {
+                <input type="file" accept="image/*" onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    const base64 = reader.result as string;
+                  try {
+                    const base64 = await compressImage(file);
                     setFotosPreview(base64);
                     setValue("fotos", base64);
-                  };
-                  reader.readAsDataURL(file);
+                  } catch (err) {
+                    alert("Error al procesar la imagen: " + err);
+                  }
                 }} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
               </div>
             </div>

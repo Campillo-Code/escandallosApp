@@ -272,6 +272,17 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE recetas ADD vida_util completed");
     }
 
+    let check_peso: Option<(String,)> = sqlx::query_as("SHOW COLUMNS FROM recetas LIKE 'peso_por_racion'")
+        .fetch_optional(pool).await.unwrap_or(None);
+    if check_peso.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN peso_por_racion DECIMAL(8,2) NULL AFTER margen_porcentaje").execute(pool).await;
+        println!("ALTER TABLE recetas ADD peso_por_racion completed");
+    }
+
+    // Upgrade fotos columns from TEXT to MEDIUMTEXT for larger images
+    let _ = sqlx::query("ALTER TABLE fichas_receta MODIFY COLUMN fotos MEDIUMTEXT NULL").execute(pool).await;
+    let _ = sqlx::query("ALTER TABLE fichas_tecnicas MODIFY COLUMN fotos MEDIUMTEXT NULL").execute(pool).await;
+
     let _ = sqlx::query(
         "CREATE TABLE IF NOT EXISTS fichas_receta (
             id INT AUTO_INCREMENT PRIMARY KEY,

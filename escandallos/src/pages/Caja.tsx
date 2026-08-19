@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { ShoppingCart, Trash2, X, Clock, TrendingUp, FileText } from "lucide-react";
-import SearchableSelect from "../components/SearchableSelect";
 
 interface CajaCategoria {
   id: number;
@@ -17,6 +16,7 @@ interface PlatoCaja {
   categoria_id: number;
   nombre: string;
   activo: boolean;
+  foto: string | null;
 }
 
 interface TicketItem {
@@ -71,6 +71,7 @@ export default function Caja() {
   const [menuSegundo, setMenuSegundo] = useState<number>(0);
   const [menuPostre, setMenuPostre] = useState<number>(0);
   const [menuBebida, setMenuBebida] = useState<number>(0);
+  const [menuCursoActivo, setMenuCursoActivo] = useState<string | null>(null);
 
   const loadCategorias = async () => {
     try {
@@ -123,6 +124,7 @@ export default function Caja() {
     setMenuSegundo(0);
     setMenuPostre(0);
     setMenuBebida(0);
+    setMenuCursoActivo(null);
     setShowAddModal(true);
     if (isMenu(cat)) {
       try {
@@ -386,7 +388,7 @@ export default function Caja() {
       {/* Add item modal */}
       {showAddModal && selectedCategoria && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <h2 className="text-lg font-semibold">{selectedCategoria.nombre}</h2>
               <button onClick={() => setShowAddModal(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
@@ -394,95 +396,175 @@ export default function Caja() {
             <div className="p-6 space-y-4">
               {isMenu(selectedCategoria) ? (
                 <>
-                  <p className="text-sm text-gray-500">Selecciona los platos del menú:</p>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Primero *</label>
-                    <SearchableSelect
-                      options={getMenuPlatos("primero").map(p => ({ value: p.id, label: p.nombre }))}
-                      value={menuPrimero}
-                      onChange={setMenuPrimero}
-                      placeholder="Seleccionar..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Segundo *</label>
-                    <SearchableSelect
-                      options={getMenuPlatos("segundo").map(p => ({ value: p.id, label: p.nombre }))}
-                      value={menuSegundo}
-                      onChange={setMenuSegundo}
-                      placeholder="Seleccionar..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Postre *</label>
-                    <SearchableSelect
-                      options={getMenuPlatos("postre").map(p => ({ value: p.id, label: p.nombre }))}
-                      value={menuPostre}
-                      onChange={setMenuPostre}
-                      placeholder="Seleccionar..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Bebida (opcional)</label>
-                    <SearchableSelect
-                      options={getMenuPlatos("bebida").map(p => ({ value: p.id, label: p.nombre }))}
-                      value={menuBebida}
-                      onChange={setMenuBebida}
-                      placeholder="Ninguna"
-                    />
-                  </div>
-                  <div className="text-right text-sm text-gray-500">
-                    Precio: <span className="font-bold text-gray-800">{selectedCategoria.precio.toFixed(2)} €</span>
-                  </div>
+                  {menuCursoActivo === null ? (
+                    <>
+                      <p className="text-sm text-gray-500">Selecciona los platos del menú:</p>
+                      <div className="space-y-2">
+                        {[
+                          { key: "primero", label: "Primero", value: menuPrimero, filter: "primero" },
+                          { key: "segundo", label: "Segundo", value: menuSegundo, filter: "segundo" },
+                          { key: "postre", label: "Postre", value: menuPostre, filter: "postre" },
+                          { key: "bebida", label: "Bebida (opcional)", value: menuBebida, filter: "bebida" },
+                        ].map((curso) => {
+                          const platoSeleccionado = curso.value > 0 ? platos.find(p => p.id === curso.value) : null;
+                          return (
+                            <button
+                              key={curso.key}
+                              onClick={() => setMenuCursoActivo(curso.key)}
+                              className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left"
+                            >
+                              <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 shrink-0">
+                                {platoSeleccionado?.foto ? (
+                                  <img src={platoSeleccionado.foto} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
+                                    <span className="text-lg">🍽️</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-xs text-gray-400">{curso.label}</div>
+                                <div className={`text-sm font-medium truncate ${platoSeleccionado ? "text-gray-800" : "text-gray-400"}`}>
+                                  {platoSeleccionado?.nombre ?? "Tocar para seleccionar"}
+                                </div>
+                              </div>
+                              <div className="text-gray-300">›</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="text-right text-sm text-gray-500">
+                        Precio: <span className="font-bold text-gray-800">{selectedCategoria.precio.toFixed(2)} €</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => setMenuCursoActivo(null)}
+                        className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 mb-2"
+                      >
+                        ← Volver al menú
+                      </button>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {menuCursoActivo === "primero" ? "Primero" : menuCursoActivo === "segundo" ? "Segundo" : menuCursoActivo === "postre" ? "Postre" : "Bebida"}
+                      </label>
+                      {getMenuPlatos(menuCursoActivo).length === 0 ? (
+                        <p className="text-xs text-gray-400">No hay platos disponibles</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+                          {getMenuPlatos(menuCursoActivo).map((p) => {
+                            const currentVal = menuCursoActivo === "primero" ? menuPrimero : menuCursoActivo === "segundo" ? menuSegundo : menuCursoActivo === "postre" ? menuPostre : menuBebida;
+                            const setCurrent = menuCursoActivo === "primero" ? setMenuPrimero : menuCursoActivo === "segundo" ? setMenuSegundo : menuCursoActivo === "postre" ? setMenuPostre : setMenuBebida;
+                            const isSelected = currentVal === p.id;
+                            return (
+                              <button
+                                key={p.id}
+                                onClick={() => { setCurrent(isSelected ? 0 : p.id); setMenuCursoActivo(null); }}
+                                className={`relative rounded-xl border-2 overflow-hidden transition-all ${
+                                  isSelected
+                                    ? "border-blue-500 ring-2 ring-blue-200 shadow-md"
+                                    : "border-gray-200 hover:border-blue-300 hover:shadow-sm"
+                                }`}
+                              >
+                                {p.foto ? (
+                                  <div className="aspect-square w-full overflow-hidden bg-gray-100">
+                                    <img src={p.foto} alt={p.nombre} className="w-full h-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="aspect-square w-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center p-1">
+                                    <span className="text-xs font-semibold text-blue-700 text-center leading-tight">{p.nombre}</span>
+                                  </div>
+                                )}
+                                <div className="px-1.5 py-1 text-center bg-white">
+                                  <span className="text-[10px] font-medium text-gray-700 truncate block">{p.nombre}</span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </>
               ) : (
                 <>
+                  {/* Grid de platos */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Selecciona plato *</label>
-                    <SearchableSelect
-                      options={platos.map(p => ({ value: p.id, label: p.nombre }))}
-                      value={selectedPlato}
-                      onChange={setSelectedPlato}
-                      placeholder="Seleccionar plato..."
-                    />
-                    {platos.length === 0 && (
-                      <p className="text-xs text-orange-500 mt-1">No hay platos en esta categoría. Añádelos en Precios Caja → Platos.</p>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Selecciona plato</label>
+                    {platos.length === 0 ? (
+                      <p className="text-xs text-orange-500">No hay platos en esta categoría. Añádelos en Precios Caja → Platos.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2 max-h-60 overflow-y-auto pr-1">
+                        {platos.map((p) => {
+                          const fotoUrl = p.foto || null;
+                          const isSelected = selectedPlato === p.id;
+                          return (
+                            <button
+                              key={p.id}
+                              onClick={() => setSelectedPlato(p.id)}
+                              className={`relative rounded-xl border-2 overflow-hidden transition-all ${
+                                isSelected
+                                  ? "border-blue-500 ring-2 ring-blue-200 shadow-md"
+                                  : "border-gray-200 hover:border-blue-300 hover:shadow-sm"
+                              }`}
+                            >
+                              {fotoUrl ? (
+                                <div className="aspect-square w-full overflow-hidden bg-gray-100">
+                                  <img src={fotoUrl} alt={p.nombre} className="w-full h-full object-cover" />
+                                </div>
+                              ) : (
+                                <div className="aspect-square w-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center p-2">
+                                  <span className="text-sm font-semibold text-blue-700 text-center leading-tight">{p.nombre}</span>
+                                </div>
+                              )}
+                              <div className="px-2 py-1.5 text-center bg-white">
+                                <span className="text-xs font-medium text-gray-700 truncate block">{p.nombre}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
 
-                  {selectedCategoria.plus > 0 && (
-                    <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                      <input type="checkbox" id="usePlus" checked={usePlus} onChange={(e) => setUsePlus(e.target.checked)}
-                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
-                      <label htmlFor="usePlus" className="text-sm">
-                        <span className="font-medium text-orange-800">Con Plus</span>
-                        <span className="text-orange-600 ml-1">(+{selectedCategoria.plus.toFixed(2)} €)</span>
-                      </label>
-                    </div>
+                  {/* Controles solo si hay plato seleccionado */}
+                  {selectedPlato > 0 && (
+                    <>
+                      {selectedCategoria.plus > 0 && (
+                        <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                          <input type="checkbox" id="usePlus" checked={usePlus} onChange={(e) => setUsePlus(e.target.checked)}
+                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
+                          <label htmlFor="usePlus" className="text-sm">
+                            <span className="font-medium text-orange-800">Con Plus</span>
+                            <span className="text-orange-600 ml-1">(+{selectedCategoria.plus.toFixed(2)} €)</span>
+                          </label>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                          <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
+                            <button onClick={() => setCantidad(Math.max(1, cantidad - 1))}
+                              className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">−</button>
+                            <span className="flex-1 text-center font-semibold text-lg">{cantidad}</span>
+                            <button onClick={() => setCantidad(cantidad + 1)}
+                              className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">+</button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
+                          <div className="flex items-center border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+                            <span className="font-mono font-bold text-lg text-blue-600">{getPrecio().toFixed(2)} €</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right text-sm text-gray-500">
+                        Subtotal: <span className="font-bold text-gray-800">{(getPrecio() * cantidad).toFixed(2)} €</span>
+                      </div>
+                    </>
                   )}
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
-                      <div className="flex items-center border border-gray-300 rounded-lg overflow-hidden">
-                        <button onClick={() => setCantidad(Math.max(1, cantidad - 1))}
-                          className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">−</button>
-                        <span className="flex-1 text-center font-semibold text-lg">{cantidad}</span>
-                        <button onClick={() => setCantidad(cantidad + 1)}
-                          className="px-3 py-2 hover:bg-gray-100 text-lg font-bold">+</button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Precio</label>
-                      <div className="flex items-center border border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
-                        <span className="font-mono font-bold text-lg text-blue-600">{getPrecio().toFixed(2)} €</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right text-sm text-gray-500">
-                    Subtotal: <span className="font-bold text-gray-800">{(getPrecio() * cantidad).toFixed(2)} €</span>
-                  </div>
                 </>
               )}
             </div>

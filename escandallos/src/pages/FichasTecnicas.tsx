@@ -8,10 +8,11 @@ import SearchBar from "../components/SearchBar";
 import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
 import { exportFichaTecnicaPDF } from "../lib/exports";
+import { compressImage } from "../lib/imageCompress";
 import { getAlergenoLabel, getAlergenoColor } from "../lib/alergenos";
 
 const schema = z.object({
-  receta_id: z.string().min(1, "Selecciona un escandallo"),
+  receta_id: z.any(),
   codigo_interno: z.string().optional(),
   fecha: z.string().optional(),
   descripcion: z.string().optional(),
@@ -301,7 +302,7 @@ export default function FichasTecnicas() {
                     />
                   )}
                 />
-                {errors.receta_id && <p className="text-red-500 text-sm mt-1">{errors.receta_id.message}</p>}
+                {errors.receta_id && <p className="text-red-500 text-sm mt-1">{String(errors.receta_id.message)}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Código interno</label>
@@ -339,16 +340,16 @@ export default function FichasTecnicas() {
                   <button type="button" onClick={() => { setFotosPreview(""); setValue("fotos", ""); }} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600"><X size={14} /></button>
                 </div>
               )}
-              <input type="file" accept="image/*" onChange={(e) => {
+              <input type="file" accept="image/*" onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const reader = new FileReader();
-                reader.onload = () => {
-                  const base64 = reader.result as string;
+                try {
+                  const base64 = await compressImage(file);
                   setFotosPreview(base64);
                   setValue("fotos", base64);
-                };
-                reader.readAsDataURL(file);
+                } catch (err) {
+                  alert("Error al procesar la imagen: " + err);
+                }
               }} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" />
             </div>
             <div>

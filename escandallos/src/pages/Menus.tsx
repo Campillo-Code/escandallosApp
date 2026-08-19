@@ -41,7 +41,7 @@ interface Receta {
 }
 
 const menuRecetaSchema = z.object({
-  receta_id: z.string().min(1, "Selecciona una receta"),
+  receta_id: z.any(),
   precio_venta: z.string().optional(),
 });
 
@@ -295,7 +295,7 @@ export default function Menus() {
                     />
                   )}
                 />
-                {errorsReceta.receta_id && <p className="text-red-500 text-sm mt-1">{errorsReceta.receta_id.message}</p>}
+                {errorsReceta.receta_id && <p className="text-red-500 text-sm mt-1">{String(errorsReceta.receta_id.message)}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta (€)</label>

@@ -15,6 +15,7 @@ interface RecetaData {
   tiempo_preparacion: number | null;
   precio_venta: number | null;
   margen_porcentaje: number | null;
+  peso_por_racion?: number | null;
   ingredientes: {
     ingrediente_nombre: string;
     cantidad: number;
@@ -58,11 +59,17 @@ export async function exportRecetaPDF(receta: RecetaData) {
   doc.setTextColor(0);
   doc.setFontSize(11);
   doc.text(`Porciones: ${receta.porciones}`, 14, y);
+  let x2 = 80;
   if (receta.tiempo_preparacion) {
-    doc.text(`Tiempo: ${receta.tiempo_preparacion} min`, 80, y);
+    doc.text(`Tiempo: ${receta.tiempo_preparacion} min`, x2, y);
+    x2 += 50;
+  }
+  if (receta.peso_por_racion) {
+    doc.text(`Peso/ración: ${receta.peso_por_racion} g`, x2, y);
+    x2 += 50;
   }
   if (receta.categoria) {
-    doc.text(`Categoría: ${receta.categoria}`, 140, y);
+    doc.text(`Categoría: ${receta.categoria}`, x2, y);
   }
   y += 10;
 
@@ -877,6 +884,7 @@ interface FichaRecetaData {
   food_cost_pct: number | null;
   margen_real_pct: number | null;
   margen_porcentaje: number | null;
+  peso_por_racion?: number | null;
   notas_adicionales: string | null;
   fotos: string | null;
 }
@@ -934,9 +942,9 @@ export async function exportFichaRecetaPDF(ficha: FichaRecetaData) {
   doc.text(`NOMBRE DEL PLATO: ${ficha.receta_nombre}`, ml + 4, y + 6.5);
   y += 9;
 
-  // ROW: CATALOGADO EN | Nº PORCIONES | PRECIO/PORCIÓN | TIEMPO ELABORACIÓN
+  // ROW: CATALOGADO EN | Nº PORCIONES | PRECIO/PORCIÓN | TIEMPO ELABORACIÓN | PESO/RACIÓN
   const rowH = 10;
-  const colW = cw / 4;
+  const colW = cw / 5;
   doc.setFillColor(...indigo200);
   doc.rect(ml, y, cw, rowH, "F");
 
@@ -954,6 +962,7 @@ export async function exportFichaRecetaPDF(ficha: FichaRecetaData) {
   drawCell("Nº PORCIONES", String(ficha.porciones), ml + colW);
   drawCell("PRECIO/PORCIÓN", ficha.precio_venta != null ? `${ficha.precio_venta.toFixed(2)} €` : "—", ml + colW * 2);
   drawCell("TIEMPO ELABOR.", ficha.tiempo_preparacion != null ? `${ficha.tiempo_preparacion} min` : "—", ml + colW * 3);
+  drawCell("PESO/RACIÓN", ficha.peso_por_racion != null ? `${ficha.peso_por_racion} g` : "—", ml + colW * 4);
 
   y += rowH + 2;
 

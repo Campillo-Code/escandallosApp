@@ -64,6 +64,7 @@ pub struct Receta {
     pub es_base: bool,
     pub precio_venta: Option<f64>,
     pub margen_porcentaje: Option<f64>,
+    pub peso_por_racion: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,6 +81,7 @@ pub struct RecetaInput {
     pub es_base: Option<bool>,
     pub precio_venta: Option<f64>,
     pub margen_porcentaje: Option<f64>,
+    pub peso_por_racion: Option<f64>,
 }
 
 // ========================================
@@ -257,7 +259,7 @@ async fn delete_ingrediente(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_recetas() -> Result<Vec<Receta>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas ORDER BY nombre";
+    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion FROM recetas ORDER BY nombre";
     let rows = sqlx::query(sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<Receta> = rows.iter().map(|r| {
         Receta {
@@ -274,6 +276,7 @@ async fn get_recetas() -> Result<Vec<Receta>, String> {
             es_base: r.try_get("es_base").unwrap_or_default(),
             precio_venta: r.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
             margen_porcentaje: r.try_get::<Option<f64>, _>("margen_porcentaje").ok().flatten(),
+            peso_por_racion: r.try_get::<Option<f64>, _>("peso_por_racion").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -283,7 +286,7 @@ async fn get_recetas() -> Result<Vec<Receta>, String> {
 async fn create_receta(input: RecetaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO recetas (nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, precio_venta, margen_porcentaje) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO recetas (nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, precio_venta, margen_porcentaje, peso_por_racion) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&input.nombre)
     .bind(&input.descripcion)
@@ -297,6 +300,7 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
     .bind(input.es_base.unwrap_or(false))
     .bind(input.precio_venta)
     .bind(input.margen_porcentaje)
+    .bind(input.peso_por_racion)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -307,7 +311,7 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
 async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE recetas SET nombre = ?, descripcion = ?, elaboracion = ?, conservacion = ?, regeneracion = ?, vida_util = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, margen_porcentaje = ? WHERE id = ?"
+        "UPDATE recetas SET nombre = ?, descripcion = ?, elaboracion = ?, conservacion = ?, regeneracion = ?, vida_util = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, margen_porcentaje = ?, peso_por_racion = ? WHERE id = ?"
     )
     .bind(&input.nombre)
     .bind(&input.descripcion)
@@ -321,6 +325,7 @@ async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
     .bind(input.es_base.unwrap_or(false))
     .bind(input.precio_venta)
     .bind(input.margen_porcentaje)
+    .bind(input.peso_por_racion)
     .bind(id)
     .execute(pool)
     .await
@@ -483,7 +488,7 @@ async fn delete_receta_ingrediente(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_recetas_base() -> Result<Vec<Receta>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas WHERE es_base = 1 ORDER BY nombre";
+    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion FROM recetas WHERE es_base = 1 ORDER BY nombre";
     let rows = sqlx::query(sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<Receta> = rows.iter().map(|r| {
         Receta {
@@ -500,6 +505,7 @@ async fn get_recetas_base() -> Result<Vec<Receta>, String> {
             es_base: r.try_get("es_base").unwrap_or_default(),
             precio_venta: r.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
             margen_porcentaje: r.try_get::<Option<f64>, _>("margen_porcentaje").ok().flatten(),
+            peso_por_racion: r.try_get::<Option<f64>, _>("peso_por_racion").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -568,7 +574,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
     let pool = &db::get_pool();
 
     let receta = sqlx::query(
-        "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje FROM recetas WHERE id = ?"
+        "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion FROM recetas WHERE id = ?"
     )
     .bind(receta_id)
     .fetch_optional(pool)
@@ -590,6 +596,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
         es_base: receta.try_get("es_base").unwrap_or_default(),
         precio_venta: receta.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
         margen_porcentaje: receta.try_get::<Option<f64>, _>("margen_porcentaje").ok().flatten(),
+        peso_por_racion: receta.try_get::<Option<f64>, _>("peso_por_racion").ok().flatten(),
     };
 
     // Fetch ALL receta_ingredientes (regular ingredients + sub-recipes)
@@ -2698,6 +2705,7 @@ pub struct PlatoCaja {
     pub receta_id: Option<i64>,
     pub nombre: String,
     pub activo: bool,
+    pub foto: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2983,13 +2991,14 @@ async fn get_recetas_basic() -> Result<Vec<RecetaBasic>, String> {
 #[tauri::command]
 async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, String> {
     let pool = &db::get_pool();
+    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, cp.activo, CAST(fr.fotos AS CHAR) AS foto FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id";
     let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
         sqlx::query_as(
-            "SELECT id, categoria_id, receta_id, nombre, activo FROM caja_platos WHERE categoria_id = ? AND activo = 1 ORDER BY nombre"
+            &format!("{} WHERE cp.categoria_id = ? AND cp.activo = 1 ORDER BY cp.nombre", base_sql)
         ).bind(cat_id).fetch_all(pool).await.map_err(|e| e.to_string())?
     } else {
         sqlx::query_as(
-            "SELECT id, categoria_id, receta_id, nombre, activo FROM caja_platos WHERE activo = 1 ORDER BY categoria_id, nombre"
+            &format!("{} WHERE cp.activo = 1 ORDER BY cp.categoria_id, cp.nombre", base_sql)
         ).fetch_all(pool).await.map_err(|e| e.to_string())?
     };
     Ok(rows)
