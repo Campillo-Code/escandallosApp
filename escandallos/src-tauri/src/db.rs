@@ -351,11 +351,24 @@ pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {
 }
 
 pub fn get_pool() -> MySqlPool {
-    DB_POOL.lock().unwrap().clone().expect("Database pool not initialized")
+    let start = std::time::Instant::now();
+    loop {
+        if let Some(pool) = DB_POOL.lock().unwrap().clone() {
+            return pool;
+        }
+        if start.elapsed().as_secs() > 3 {
+            panic!("No hay conexion a la base datos tras 3 segundos. Reinicia la app o cambia la BD en Configuracion.");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
 }
 
-pub fn get_pool_safe() -> Option<MySqlPool> {
-    DB_POOL.lock().unwrap().clone()
+pub fn get_pool_or_init() -> Result<MySqlPool, String> {
+    let pool = DB_POOL.lock().unwrap().clone();
+    match pool {
+        Some(p) => Ok(p),
+        None => Err("No hay conexion a la base datos. Ve a Configuracion y selecciona una.".to_string()),
+    }
 }
 
 pub fn is_connected() -> bool {
