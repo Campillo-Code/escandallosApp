@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer, Download } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 interface DbConfig {
   id: string;
@@ -170,10 +171,10 @@ export default function Configuracion() {
   };
 
   const handleActivate = async (id: string) => {
-    if (!confirm("¿Activar esta base de datos? La app se recargará.")) return;
+    if (!confirm("¿Activar esta base de datos? La app se reiniciará.")) return;
     try {
       await invoke<DbConfig[]>("activate_and_switch_db", { id });
-      window.location.reload();
+      await relaunch();
     } catch (e) {
       alert("Error al conectar: " + e);
     }
