@@ -172,11 +172,15 @@ export default function Configuracion() {
   const handleActivate = async (id: string) => {
     if (!confirm("¿Activar esta base de datos?")) return;
     try {
-      await invoke<DbConfig[]>("activate_and_switch_db", { id });
+      setLoading(true);
+      const result = await invoke<DbConfig[]>("activate_and_switch_db", { id });
       await loadConfigs();
-      alert("Base de datos activada correctamente");
+      const active = result.find(c => c.activa);
+      alert(`✅ Conectada a: ${active?.nombre} (${active?.host})`);
     } catch (e) {
-      alert("Error al conectar: " + e);
+      alert("❌ Error al conectar: " + e);
+    } finally {
+      setLoading(false);
     }
   };
 

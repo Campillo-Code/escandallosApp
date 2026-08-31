@@ -2553,15 +2553,20 @@ fn set_active_db(id: String) -> Vec<db::DbConfig> {
 #[tauri::command]
 async fn test_db_connection(config: db::DbConfig) -> Result<String, String> {
     let url = db::build_url_public(&config);
+    println!("[DB] test_db_connection: Probando {}@{}:{}/{}", config.usuario, config.host, config.puerto, config.base_datos);
     let pool = sqlx::mysql::MySqlPool::connect(&url)
         .await
-        .map_err(|e| format!("Error de conexión: {}", e))?;
-    // Test with a simple query
+        .map_err(|e| {
+            let msg = format!("Error de conexión: {}", e);
+            println!("[DB] test_db_connection ERROR: {}", msg);
+            msg
+        })?;
     sqlx::query("SELECT 1")
         .execute(&pool)
         .await
         .map_err(|e| format!("Error en query de prueba: {}", e))?;
     pool.close().await;
+    println!("[DB] test_db_connection: OK");
     Ok("Conexión exitosa".to_string())
 }
 

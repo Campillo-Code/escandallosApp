@@ -342,7 +342,9 @@ async fn run_migrations(pool: &MySqlPool) {
 
 pub async fn switch_db(config: &DbConfig) -> Result<(), sqlx::Error> {
     let url = build_url(config);
+    println!("[DB] switch_db: Conectando a {}@{}:{}/{}", config.usuario, config.host, config.puerto, config.base_datos);
     let pool = MySqlPool::connect(&url).await?;
+    println!("[DB] switch_db: Conectado OK");
     *DB_POOL.lock().unwrap() = Some(pool.clone());
     run_migrations(&pool).await;
     Ok(())
