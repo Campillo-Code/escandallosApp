@@ -42,12 +42,8 @@ export default function Configuracion() {
   const [loadingPrinters, setLoadingPrinters] = useState(true);
   const [appVersion, setAppVersion] = useState<string>("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [dbConnected, setDbConnected] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    getVersion().then(setAppVersion).catch(() => {});
-    invoke<boolean>("db_status").then(setDbConnected).catch(() => setDbConnected(false));
-  }, []);
+  useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
   const checkForUpdate = async () => {
     setCheckingUpdate(true);
@@ -276,8 +272,8 @@ export default function Configuracion() {
                 <tr key={c.id} className={`hover:bg-gray-50 ${c.activa ? "bg-blue-50" : ""}`}>
                   <td className="px-4 py-3">
                     {c.activa ? (
-                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${dbConnected ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                        {dbConnected ? <><Wifi size={12} /> Conectada</> : <><WifiOff size={12} /> Sin conexión</>}
+                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                        <Wifi size={12} /> Activa
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-500">

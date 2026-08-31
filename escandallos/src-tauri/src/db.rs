@@ -337,6 +337,10 @@ pub fn get_pool() -> MySqlPool {
     DB_POOL.lock().unwrap().clone().expect("Database pool not initialized")
 }
 
+pub fn get_pool_safe() -> Option<MySqlPool> {
+    DB_POOL.lock().unwrap().clone()
+}
+
 pub fn is_connected() -> bool {
     DB_POOL.lock().unwrap().is_some()
 }
