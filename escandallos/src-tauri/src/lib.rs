@@ -3332,10 +3332,20 @@ pub fn run() {
             std::fs::create_dir_all(&config_dir).ok();
             db::init_config_path(config_dir);
             tauri::async_runtime::spawn(async {
-                if let Err(e) = db::init_db().await {
-                    eprintln!("Error connecting to database: {}", e);
-                } else {
-                    println!("Database connected successfully!");
+                // Reintentar conexión hasta 3 veces
+                for attempt in 1..=3 {
+                    match db::init_db().await {
+                        Ok(()) => {
+                            println!("Database connected successfully on attempt {}", attempt);
+                            break;
+                        }
+                        Err(e) => {
+                            eprintln!("Attempt {}/3 - Error connecting to database: {}", attempt, e);
+                            if attempt < 3 {
+                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            }
+                        }
+                    }
                 }
             });
             Ok(())

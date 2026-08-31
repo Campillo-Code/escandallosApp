@@ -56,9 +56,16 @@ pub async fn init_db() -> Result<(), sqlx::Error> {
     let configs = load_configs();
     let active = configs.iter().find(|c| c.activa);
     let url = match active {
-        Some(c) => build_url(c),
-        None => "mysql://campillo:mayo1500@192.168.1.151:3306/escandallos_db".to_string(),
+        Some(c) => {
+            println!("[DB] Config activa encontrada: {}@{}:{}/{}", c.usuario, c.host, c.puerto, c.base_datos);
+            build_url(c)
+        }
+        None => {
+            println!("[DB] No hay config activa, usando fallback");
+            "mysql://campillo:mayo1500@192.168.1.151:3306/escandallos_db".to_string()
+        }
     };
+    println!("[DB] Conectando a: {}", url.replace(&url[url.find("://").unwrap_or(0)+3..url.find("@").unwrap_or(url.len())], "***:***"));
     let pool = MySqlPool::connect(&url).await?;
     *DB_POOL.lock().unwrap() = Some(pool.clone());
     run_migrations(&pool).await;
