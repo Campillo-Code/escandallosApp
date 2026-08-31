@@ -70,10 +70,14 @@ export default function Configuracion() {
 
   const loadConfigs = async () => {
     try {
-      const result = await invoke<DbConfig[]>("get_db_configs");
+      const result = await Promise.race([
+        invoke<DbConfig[]>("get_db_configs"),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout cargando configs")), 5000))
+      ]);
       setConfigs(result);
     } catch (e) {
-      console.error(e);
+      console.error("Error cargando configs:", e);
+      alert("Error cargando configuraciones: " + e);
     } finally {
       setLoading(false);
     }
@@ -173,12 +177,15 @@ export default function Configuracion() {
     if (!confirm("¿Activar esta base de datos?")) return;
     try {
       setLoading(true);
-      const result = await invoke<DbConfig[]>("activate_and_switch_db", { id });
+      const result = await Promise.race([
+        invoke<DbConfig[]>("activate_and_switch_db", { id }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout de conexion (5s)")), 5000))
+      ]);
       await loadConfigs();
       const active = result.find(c => c.activa);
       alert(`✅ Conectada a: ${active?.nombre} (${active?.host})`);
     } catch (e) {
-      alert("❌ Error al conectar: " + e);
+      alert("❌ Error: " + e);
     } finally {
       setLoading(false);
     }
