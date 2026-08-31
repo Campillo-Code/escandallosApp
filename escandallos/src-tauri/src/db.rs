@@ -53,11 +53,18 @@ pub fn build_url_public(c: &DbConfig) -> String {
 }
 
 pub async fn init_db() -> Result<(), sqlx::Error> {
+    let path = get_configs_path();
+    println!("[DB] Config path: {:?}", path);
+    println!("[DB] Config file exists: {}", path.exists());
     let configs = load_configs();
+    println!("[DB] Configs loaded: {} total", configs.len());
+    for c in &configs {
+        println!("[DB]   - {} (activa={}, host={}:{})", c.nombre, c.activa, c.host, c.puerto);
+    }
     let active = configs.iter().find(|c| c.activa);
     let url = match active {
         Some(c) => {
-            println!("[DB] Config activa encontrada: {}@{}:{}/{}", c.usuario, c.host, c.puerto, c.base_datos);
+            println!("[DB] Config activa: {}@{}:{}/{}", c.usuario, c.host, c.puerto, c.base_datos);
             build_url(c)
         }
         None => {
@@ -65,8 +72,9 @@ pub async fn init_db() -> Result<(), sqlx::Error> {
             "mysql://campillo:mayo1500@192.168.1.151:3306/escandallos_db?connect_timeout=5".to_string()
         }
     };
-    println!("[DB] Conectando a: {}", url.replace(&url[url.find("://").unwrap_or(0)+3..url.find("@").unwrap_or(url.len())], "***:***"));
+    println!("[DB] Conectando...");
     let pool = MySqlPool::connect(&url).await?;
+    println!("[DB] Conectado OK");
     *DB_POOL.lock().unwrap() = Some(pool.clone());
     run_migrations(&pool).await;
     Ok(())
