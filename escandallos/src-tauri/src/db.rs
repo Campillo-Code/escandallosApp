@@ -45,7 +45,7 @@ pub fn init_config_path(config_dir: PathBuf) {
 }
 
 fn build_url(c: &DbConfig) -> String {
-    format!("mysql://{}:{}@{}:{}/{}", c.usuario, c.password, c.host, c.puerto, c.base_datos)
+    format!("mysql://{}:{}@{}:{}/{}?connect_timeout=5", c.usuario, c.password, c.host, c.puerto, c.base_datos)
 }
 
 pub fn build_url_public(c: &DbConfig) -> String {
@@ -62,7 +62,7 @@ pub async fn init_db() -> Result<(), sqlx::Error> {
         }
         None => {
             println!("[DB] No hay config activa, usando fallback");
-            "mysql://campillo:mayo1500@192.168.1.151:3306/escandallos_db".to_string()
+            "mysql://campillo:mayo1500@192.168.1.151:3306/escandallos_db?connect_timeout=5".to_string()
         }
     };
     println!("[DB] Conectando a: {}", url.replace(&url[url.find("://").unwrap_or(0)+3..url.find("@").unwrap_or(url.len())], "***:***"));
