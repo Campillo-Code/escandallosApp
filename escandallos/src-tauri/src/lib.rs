@@ -2573,6 +2573,11 @@ async fn activate_and_switch_db(id: String) -> Result<Vec<db::DbConfig>, String>
     Ok(configs)
 }
 
+#[tauri::command]
+fn db_status() -> bool {
+    db::is_connected()
+}
+
 // ========================================
 // IMPRESORAS
 // ========================================
@@ -3418,6 +3423,7 @@ pub fn run() {
             set_active_db,
             test_db_connection,
             activate_and_switch_db,
+            db_status,
             get_lotes,
             create_lote,
             update_lote,

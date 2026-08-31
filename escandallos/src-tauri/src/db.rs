@@ -337,6 +337,10 @@ pub fn get_pool() -> MySqlPool {
     DB_POOL.lock().unwrap().clone().expect("Database pool not initialized")
 }
 
+pub fn is_connected() -> bool {
+    DB_POOL.lock().unwrap().is_some()
+}
+
 pub fn get_all_configs() -> Vec<DbConfig> {
     load_configs()
 }
