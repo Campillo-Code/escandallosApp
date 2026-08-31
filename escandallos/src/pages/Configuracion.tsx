@@ -173,8 +173,14 @@ export default function Configuracion() {
   const handleActivate = async (id: string) => {
     if (!confirm("¿Activar esta base de datos? La app se reiniciará.")) return;
     try {
-      await invoke<DbConfig[]>("activate_and_switch_db", { id });
-      await relaunch();
+      const configs = await invoke<DbConfig[]>("activate_and_switch_db", { id });
+      const active = configs.find(c => c.activa);
+      if (active) {
+        console.log("Config activa guardada:", active.nombre, active.host);
+        // Esperar a que se guarde en disco antes de reiniciar
+        await new Promise(r => setTimeout(r, 500));
+        await relaunch();
+      }
     } catch (e) {
       alert("Error al conectar: " + e);
     }
