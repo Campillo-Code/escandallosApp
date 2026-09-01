@@ -59,6 +59,7 @@ export default function Caja() {
   const [resumen, setResumen] = useState<CajaResumen | null>(null);
   const [menuDelDia, setMenuDelDia] = useState<{ primero_id: number | null; segundo_id: number | null; postre_id: number | null; precio_base: number } | null>(null);
   const [showMenuModal, setShowMenuModal] = useState(false);
+  const [menuLocal, setMenuLocal] = useState<{ primero_id: number | null; segundo_id: number | null; postre_id: number | null }>({ primero_id: null, segundo_id: null, postre_id: null });
   const [ticketsHoy, setTicketsHoy] = useState<CajaTicket[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
@@ -269,7 +270,12 @@ export default function Caja() {
           {/* Category buttons */}
           {/* Menú del Día */}
           {menuDelDia && (
-            <button onClick={() => { setShowMenuModal(true); setMenuCursoActivo(null); loadAllPlatos(); }}
+            <button onClick={() => {
+              setShowMenuModal(true);
+              setMenuCursoActivo(null);
+              setMenuLocal({ primero_id: menuDelDia.primero_id, segundo_id: menuDelDia.segundo_id, postre_id: menuDelDia.postre_id });
+              loadAllPlatos();
+            }}
               className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl p-4 text-center hover:shadow-lg transition-all mb-2">
               <div className="font-bold text-lg">Menú del Día</div>
               <div className="text-2xl font-bold mt-1">{menuDelDia.precio_base.toFixed(2)} €</div>
@@ -682,9 +688,9 @@ export default function Caja() {
               {menuCursoActivo === null ? (
                 <div className="space-y-3">
                   {[
-                    { key: "primero", label: "Primero", id: menuDelDia.primero_id },
-                    { key: "segundo", label: "Segundo", id: menuDelDia.segundo_id },
-                    { key: "postre", label: "Postre", id: menuDelDia.postre_id },
+                    { key: "primero", label: "Primero", id: menuLocal.primero_id },
+                    { key: "segundo", label: "Segundo", id: menuLocal.segundo_id },
+                    { key: "postre", label: "Postre", id: menuLocal.postre_id },
                   ].map((curso) => {
                     const plato = platos.find(p => p.id === curso.id);
                     const plus = plato?.plus || 0;
@@ -714,9 +720,9 @@ export default function Caja() {
                   <button onClick={() => {
                     // Añadir menú al ticket
                     const plusTotal = [
-                      { id: menuDelDia.primero_id },
-                      { id: menuDelDia.segundo_id },
-                      { id: menuDelDia.postre_id },
+                      { id: menuLocal.primero_id },
+                      { id: menuLocal.segundo_id },
+                      { id: menuLocal.postre_id },
                     ].reduce((sum, c) => {
                       const p = platos.find(pl => pl.id === c.id);
                       return sum + (p?.plus || 0);
@@ -754,9 +760,9 @@ export default function Caja() {
                       const plus = p.plus || 0;
                       return (
                         <button key={p.id} onClick={() => {
-                          if (menuCursoActivo === "primero") setMenuDelDia(prev => prev ? { ...prev, primero_id: p.id } : null);
-                          else if (menuCursoActivo === "segundo") setMenuDelDia(prev => prev ? { ...prev, segundo_id: p.id } : null);
-                          else setMenuDelDia(prev => prev ? { ...prev, postre_id: p.id } : null);
+                          if (menuCursoActivo === "primero") setMenuLocal(prev => ({ ...prev, primero_id: p.id }));
+                          else if (menuCursoActivo === "segundo") setMenuLocal(prev => ({ ...prev, segundo_id: p.id }));
+                          else setMenuLocal(prev => ({ ...prev, postre_id: p.id }));
                           setMenuCursoActivo(null);
                         }}
                           className="text-left p-3 border-2 border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-all">
