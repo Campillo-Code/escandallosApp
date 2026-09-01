@@ -53,7 +53,6 @@ export default function Caja() {
   const [selectedCategoria, setSelectedCategoria] = useState<CajaCategoria | null>(null);
   const [selectedPlato, setSelectedPlato] = useState<number>(0);
   const [cantidad, setCantidad] = useState(1);
-  const [usePlus, setUsePlus] = useState(false);
   const [notas, setNotas] = useState("");
   const [metodoPago, setMetodoPago] = useState("efectivo");
   const [resumen, setResumen] = useState<CajaResumen | null>(null);
@@ -134,7 +133,6 @@ export default function Caja() {
     setSelectedCategoria(cat);
     setSelectedPlato(0);
     setCantidad(1);
-    setUsePlus(false);
     setMenuPrimero(0);
     setMenuSegundo(0);
     setMenuPostre(0);
@@ -153,7 +151,9 @@ export default function Caja() {
 
   const getPrecio = () => {
     if (!selectedCategoria) return 0;
-    return selectedCategoria.precio + (usePlus ? selectedCategoria.plus : 0);
+    const plato = platos.find(p => p.id === selectedPlato);
+    const plus = plato?.plus || 0;
+    return selectedCategoria.precio + plus;
   };
 
   const addItem = () => {
@@ -560,16 +560,19 @@ export default function Caja() {
                   {/* Controles solo si hay plato seleccionado */}
                   {selectedPlato > 0 && (
                     <>
-                      {selectedCategoria.plus > 0 && (
-                        <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-lg border border-orange-200">
-                          <input type="checkbox" id="usePlus" checked={usePlus} onChange={(e) => setUsePlus(e.target.checked)}
-                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500" />
-                          <label htmlFor="usePlus" className="text-sm">
-                            <span className="font-medium text-orange-800">Con Plus</span>
-                            <span className="text-orange-600 ml-1">(+{selectedCategoria.plus.toFixed(2)} €)</span>
-                          </label>
-                        </div>
-                      )}
+                      {(() => {
+                        const plato = platos.find(p => p.id === selectedPlato);
+                        const plus = plato?.plus || 0;
+                        if (plus > 0) {
+                          return (
+                            <div className="flex items-center gap-2 p-3 bg-orange-50 rounded-lg border border-orange-200">
+                              <span className="text-sm font-medium text-orange-800">Plus</span>
+                              <span className="text-orange-600">+{plus.toFixed(2)} €</span>
+                            </div>
+                          );
+                        }
+                        return null;
+                      })()}
 
                       <div className="grid grid-cols-2 gap-3">
                         <div>
