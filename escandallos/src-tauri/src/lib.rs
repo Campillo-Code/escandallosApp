@@ -3001,7 +3001,7 @@ async fn get_recetas_basic() -> Result<Vec<RecetaBasic>, String> {
 #[tauri::command]
 async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, String> {
     let pool = &db::get_pool();
-    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, cp.plus, cp.activo, CAST(fr.fotos AS CHAR) AS foto FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id";
+    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, CAST(cp.plus AS DOUBLE) AS plus, cp.activo, CAST(fr.fotos AS CHAR) AS foto FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id";
     let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
         sqlx::query_as(
             &format!("{} WHERE cp.categoria_id = ? AND cp.activo = 1 ORDER BY cp.nombre", base_sql)
