@@ -46,7 +46,6 @@ const sections: SidebarSection[] = [
       { to: "/guarniciones", label: "Guarniciones", icon: "🥗" },
       { to: "/fichas-tecnicas", label: "Fichas Técnicas", icon: "🧾" },
       { to: "/fichas-receta", label: "Fichas Receta", icon: "📖" },
-      { to: "/menu-del-dia", label: "Menú del Día", icon: "📅" },
     ],
   },
   {
@@ -123,7 +122,7 @@ function App() {
           {/* Caja */}
           {(() => {
             const isOpen = openSections["caja"];
-            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja";
+            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja" || location.pathname === "/menu-del-dia";
             return (
               <div>
                 <button
@@ -158,6 +157,12 @@ function App() {
                           ? "bg-green-600 text-white"
                           : "text-slate-400 hover:bg-slate-700 hover:text-white"
                       }`}>Platos</a>
+                    <a href="/menu-del-dia"
+                      className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                        location.pathname === "/menu-del-dia"
+                          ? "bg-green-600 text-white"
+                          : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}>Menú del Día</a>
                   </div>
                 )}
               </div>

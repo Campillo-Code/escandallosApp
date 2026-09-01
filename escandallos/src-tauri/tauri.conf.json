@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "con-sazon-gestion",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "identifier": "com.campillo.con-sazon-gestion",
   "build": {
     "beforeDevCommand": "npm run dev",

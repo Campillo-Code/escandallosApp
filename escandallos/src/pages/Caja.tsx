@@ -120,6 +120,13 @@ export default function Caja() {
     } catch (e) { console.error(e); }
   };
 
+  const loadAllPlatos = async () => {
+    try {
+      const data = await invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: null });
+      setPlatos(data.filter(p => p.activo));
+    } catch (e) { console.error(e); }
+  };
+
   const isMenu = (cat: CajaCategoria) => cat.nombre.toLowerCase().includes("men");
 
   const openAddModal = async (cat: CajaCategoria) => {
@@ -262,7 +269,7 @@ export default function Caja() {
           {/* Category buttons */}
           {/* Menú del Día */}
           {menuDelDia && (
-            <button onClick={() => { setShowMenuModal(true); setMenuCursoActivo(null); }}
+            <button onClick={() => { setShowMenuModal(true); setMenuCursoActivo(null); loadAllPlatos(); }}
               className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl p-4 text-center hover:shadow-lg transition-all mb-2">
               <div className="font-bold text-lg">Menú del Día</div>
               <div className="text-2xl font-bold mt-1">{menuDelDia.precio_base.toFixed(2)} €</div>
@@ -740,7 +747,9 @@ export default function Caja() {
                   <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
                     {platos.filter(p => {
                       const cat = categorias.find(c => c.id === p.categoria_id);
-                      return cat?.nombre.toLowerCase().includes(menuCursoActivo);
+                      if (!cat) return false;
+                      const catLower = cat.nombre.toLowerCase();
+                      return catLower.includes(menuCursoActivo);
                     }).map(p => {
                       const plus = p.plus || 0;
                       return (
