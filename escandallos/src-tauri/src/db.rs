@@ -234,6 +234,27 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE caja_platos ADD receta_id completed");
     }
 
+    // CAJA: Add plus to caja_platos if not exists
+    let check_plus: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_platos' AND COLUMN_NAME = 'plus'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_plus.is_none() {
+        let _ = sqlx::query("ALTER TABLE caja_platos ADD COLUMN plus DECIMAL(10,2) DEFAULT 0 AFTER nombre").execute(pool).await;
+        println!("ALTER TABLE caja_platos ADD plus completed");
+    }
+
+    // MENU DEL DIA: Create table
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS menu_del_dia (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        fecha DATE NOT NULL,
+        primero_id INT NULL,
+        segundo_id INT NULL,
+        postre_id INT NULL,
+        precio_base DECIMAL(10,2) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY idx_menu_fecha (fecha)
+    )").execute(pool).await;
+
     // CAJA: Add metodo_pago to caja_tickets if not exists
     let check_mp: Option<(String,)> = sqlx::query_as(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_tickets' AND COLUMN_NAME = 'metodo_pago'"

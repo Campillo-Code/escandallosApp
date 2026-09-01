@@ -18,6 +18,7 @@ interface PlatoCaja {
   categoria_id: number;
   receta_id: number | null;
   nombre: string;
+  plus: number;
   activo: boolean;
 }
 
@@ -35,7 +36,7 @@ export default function PlatosCaja() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ categoria_id: 0, receta_id: null as number | null, nombre: "", activo: true });
+  const [form, setForm] = useState({ categoria_id: 0, receta_id: null as number | null, nombre: "", plus: 0, activo: true });
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -69,13 +70,13 @@ export default function PlatosCaja() {
 
   const handleNew = () => {
     setEditingId(null);
-    setForm({ categoria_id: selectedCat || (categorias[0]?.id ?? 0), receta_id: null, nombre: "", activo: true });
+    setForm({ categoria_id: selectedCat || (categorias[0]?.id ?? 0), receta_id: null, nombre: "", plus: 0, activo: true });
     setShowForm(true);
   };
 
   const handleEdit = (plato: PlatoCaja) => {
     setEditingId(plato.id);
-    setForm({ categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, activo: plato.activo });
+    setForm({ categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, plus: plato.plus || 0, activo: plato.activo });
     setShowForm(true);
   };
 
@@ -188,6 +189,7 @@ export default function PlatosCaja() {
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Plato</th>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría Caja</th>
+              <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Plus (€)</th>
               <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Activo</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Acciones</th>
             </tr>
@@ -205,6 +207,9 @@ export default function PlatosCaja() {
                   <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
                     {getCatName(plato.categoria_id)}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-right text-sm text-gray-600">
+                  {plato.plus > 0 ? `+${plato.plus.toFixed(2)}€` : "—"}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <button onClick={() => handleToggle(plato)} className={`w-10 h-5 rounded-full transition-colors ${plato.activo ? "bg-blue-600" : "bg-gray-300"}`}>
@@ -276,6 +281,14 @@ export default function PlatosCaja() {
                   placeholder="Nombre del plato"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                 <p className="text-xs text-gray-400 mt-1">Se rellena automáticamente al seleccionar la receta</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Plus (€ extra)</label>
+                <input type="number" step="0.01" min="0" value={form.plus}
+                  onChange={(e) => setForm({ ...form, plus: parseFloat(e.target.value) || 0 })}
+                  placeholder="0"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                <p className="text-xs text-gray-400 mt-1">Sobrecoste si se elige este plato en el menú</p>
               </div>
               <div className="flex items-center gap-2">
                 <input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })}

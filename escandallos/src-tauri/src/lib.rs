@@ -2712,6 +2712,7 @@ pub struct PlatoCaja {
     pub categoria_id: i64,
     pub receta_id: Option<i64>,
     pub nombre: String,
+    pub plus: f64,
     pub activo: bool,
     pub foto: Option<String>,
 }
@@ -2721,6 +2722,7 @@ pub struct PlatoCajaInput {
     pub categoria_id: i64,
     pub receta_id: Option<i64>,
     pub nombre: String,
+    pub plus: Option<f64>,
     pub activo: Option<bool>,
 }
 
@@ -2999,7 +3001,7 @@ async fn get_recetas_basic() -> Result<Vec<RecetaBasic>, String> {
 #[tauri::command]
 async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, String> {
     let pool = &db::get_pool();
-    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, cp.activo, CAST(fr.fotos AS CHAR) AS foto FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id";
+    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, cp.plus, cp.activo, CAST(fr.fotos AS CHAR) AS foto FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id";
     let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
         sqlx::query_as(
             &format!("{} WHERE cp.categoria_id = ? AND cp.activo = 1 ORDER BY cp.nombre", base_sql)
@@ -3016,9 +3018,9 @@ async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, St
 async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO caja_platos (categoria_id, receta_id, nombre, activo) VALUES (?, ?, ?, ?)"
+        "INSERT INTO caja_platos (categoria_id, receta_id, nombre, plus, activo) VALUES (?, ?, ?, ?, ?)"
     )
-    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
+    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.plus.unwrap_or(0.0)).bind(input.activo.unwrap_or(true))
     .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(result.last_insert_id() as i64)
 }
@@ -3027,9 +3029,9 @@ async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
 async fn update_plato_caja(id: i64, input: PlatoCajaInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE caja_platos SET categoria_id = ?, receta_id = ?, nombre = ?, activo = ? WHERE id = ?"
+        "UPDATE caja_platos SET categoria_id = ?, receta_id = ?, nombre = ?, plus = ?, activo = ? WHERE id = ?"
     )
-    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.activo.unwrap_or(true))
+    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.plus.unwrap_or(0.0)).bind(input.activo.unwrap_or(true))
     .bind(id)
     .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -3039,6 +3041,79 @@ async fn update_plato_caja(id: i64, input: PlatoCajaInput) -> Result<(), String>
 async fn delete_plato_caja(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query("DELETE FROM caja_platos WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ========================================
+// MENU DEL DIA
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct MenuDelDia {
+    pub id: i64,
+    pub fecha: String,
+    pub primero_id: Option<i64>,
+    pub segundo_id: Option<i64>,
+    pub postre_id: Option<i64>,
+    pub precio_base: f64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MenuDelDiaInput {
+    pub fecha: String,
+    pub primero_id: Option<i64>,
+    pub segundo_id: Option<i64>,
+    pub postre_id: Option<i64>,
+    pub precio_base: f64,
+}
+
+#[tauri::command]
+async fn get_menu_del_dia(fecha: Option<String>) -> Result<Vec<MenuDelDia>, String> {
+    let pool = &db::get_pool();
+    let f = fecha.unwrap_or_else(|| {
+        let now = chrono::Local::now();
+        now.format("%Y-%m-%d").to_string()
+    });
+    let rows: Vec<MenuDelDia> = sqlx::query_as(
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM menu_del_dia WHERE fecha = ?"
+    ).bind(&f).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    Ok(rows)
+}
+
+#[tauri::command]
+async fn get_menu_del_dia_hoy() -> Result<Option<MenuDelDia>, String> {
+    let pool = &db::get_pool();
+    let now = chrono::Local::now();
+    let f = now.format("%Y-%m-%d").to_string();
+    let row: Option<MenuDelDia> = sqlx::query_as(
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM menu_del_dia WHERE fecha = ?"
+    ).bind(&f).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    Ok(row)
+}
+
+#[tauri::command]
+async fn save_menu_del_dia(input: MenuDelDiaInput) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM menu_del_dia WHERE fecha = ?")
+        .bind(&input.fecha).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    if let Some((id,)) = existing {
+        sqlx::query("UPDATE menu_del_dia SET primero_id = ?, segundo_id = ?, postre_id = ?, precio_base = ? WHERE id = ?")
+            .bind(input.primero_id).bind(input.segundo_id).bind(input.postre_id).bind(input.precio_base).bind(id)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        Ok(id)
+    } else {
+        let result = sqlx::query("INSERT INTO menu_del_dia (fecha, primero_id, segundo_id, postre_id, precio_base) VALUES (?, ?, ?, ?, ?)")
+            .bind(&input.fecha).bind(input.primero_id).bind(input.segundo_id).bind(input.postre_id).bind(input.precio_base)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        Ok(result.last_insert_id() as i64)
+    }
+}
+
+#[tauri::command]
+async fn delete_menu_del_dia(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM menu_del_dia WHERE id = ?").bind(id)
         .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -3464,6 +3539,10 @@ pub fn run() {
             create_plato_caja,
             update_plato_caja,
             delete_plato_caja,
+            get_menu_del_dia,
+            get_menu_del_dia_hoy,
+            save_menu_del_dia,
+            delete_menu_del_dia,
             get_recetas_basic,
             get_despieces,
             get_despiece_salidas,

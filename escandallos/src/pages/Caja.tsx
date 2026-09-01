@@ -15,6 +15,7 @@ interface PlatoCaja {
   id: number;
   categoria_id: number;
   nombre: string;
+  plus: number;
   activo: boolean;
   foto: string | null;
 }
@@ -56,6 +57,8 @@ export default function Caja() {
   const [notas, setNotas] = useState("");
   const [metodoPago, setMetodoPago] = useState("efectivo");
   const [resumen, setResumen] = useState<CajaResumen | null>(null);
+  const [menuDelDia, setMenuDelDia] = useState<{ primero_id: number | null; segundo_id: number | null; postre_id: number | null; precio_base: number } | null>(null);
+  const [showMenuModal, setShowMenuModal] = useState(false);
   const [ticketsHoy, setTicketsHoy] = useState<CajaTicket[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
@@ -104,6 +107,10 @@ export default function Caja() {
     loadCategorias();
     loadResumen();
     loadTicketsHoy();
+    // Cargar menú del día
+    invoke<{ primero_id: number | null; segundo_id: number | null; postre_id: number | null; precio_base: number }[]>("get_menu_del_dia_hoy")
+      .then(data => { if (data) setMenuDelDia(data as any); })
+      .catch(() => {});
   }, []);
 
   const loadPlatos = async (catId: number) => {
@@ -253,6 +260,16 @@ export default function Caja() {
         {/* Left: Categories + Ticket items */}
         <div className="flex-1 flex flex-col gap-4">
           {/* Category buttons */}
+          {/* Menú del Día */}
+          {menuDelDia && (
+            <button onClick={() => { setShowMenuModal(true); setMenuCursoActivo(null); }}
+              className="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl p-4 text-center hover:shadow-lg transition-all mb-2">
+              <div className="font-bold text-lg">Menú del Día</div>
+              <div className="text-2xl font-bold mt-1">{menuDelDia.precio_base.toFixed(2)} €</div>
+              <div className="text-xs opacity-80 mt-1">Toca para ver los platos</div>
+            </button>
+          )}
+
           <div className="grid grid-cols-4 gap-2">
             {categorias.map((cat) => (
               <button key={cat.id} onClick={() => openAddModal(cat)}
@@ -639,6 +656,107 @@ export default function Caja() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Menu del Dia Modal */}
+      {showMenuModal && menuDelDia && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">Menú del Día — {menuDelDia.precio_base.toFixed(2)} €</h2>
+              <button onClick={() => { setShowMenuModal(false); setMenuCursoActivo(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="p-6">
+              {menuCursoActivo === null ? (
+                <div className="space-y-3">
+                  {[
+                    { key: "primero", label: "Primero", id: menuDelDia.primero_id },
+                    { key: "segundo", label: "Segundo", id: menuDelDia.segundo_id },
+                    { key: "postre", label: "Postre", id: menuDelDia.postre_id },
+                  ].map((curso) => {
+                    const plato = platos.find(p => p.id === curso.id);
+                    const plus = plato?.plus || 0;
+                    return (
+                      <button key={curso.key} onClick={() => setMenuCursoActivo(curso.key)}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl border-2 border-gray-200 hover:border-amber-300 hover:bg-amber-50 transition-all text-left">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden bg-gray-100 shrink-0">
+                          {plato?.foto ? (
+                            <img src={plato.foto} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-amber-100 to-amber-200 flex items-center justify-center">
+                              <span className="text-lg">🍽️</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-gray-400">{curso.label}</div>
+                          <div className={`text-sm font-medium truncate ${plato ? "text-gray-800" : "text-gray-400"}`}>
+                            {plato?.nombre ?? "Tocar para seleccionar"}
+                          </div>
+                        </div>
+                        {plus > 0 && <span className="text-xs text-orange-500 font-medium">+{plus.toFixed(2)}€</span>}
+                        <div className="text-gray-300">›</div>
+                      </button>
+                    );
+                  })}
+                  <button onClick={() => {
+                    // Añadir menú al ticket
+                    const plusTotal = [
+                      { id: menuDelDia.primero_id },
+                      { id: menuDelDia.segundo_id },
+                      { id: menuDelDia.postre_id },
+                    ].reduce((sum, c) => {
+                      const p = platos.find(pl => pl.id === c.id);
+                      return sum + (p?.plus || 0);
+                    }, 0);
+                    const precioTotal = menuDelDia.precio_base + plusTotal;
+                    setTicket(prev => [...prev, {
+                      categoria: "Menú del Día",
+                      descripcion: "Menú del día",
+                      cantidad: 1,
+                      precio_unitario: precioTotal,
+                      subtotal: precioTotal,
+                    }]);
+                    setShowMenuModal(false);
+                  }}
+                    className="w-full py-3 bg-amber-500 text-white font-bold rounded-xl hover:bg-amber-600 transition-colors mt-4">
+                    Añadir menú al ticket ({(menuDelDia.precio_base).toFixed(2)} €)
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  <button onClick={() => setMenuCursoActivo(null)}
+                    className="flex items-center gap-1 text-sm text-amber-600 hover:text-amber-800 mb-3">
+                    ← Volver al menú
+                  </button>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {menuCursoActivo === "primero" ? "Primero" : menuCursoActivo === "segundo" ? "Segundo" : "Postre"}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 max-h-60 overflow-y-auto">
+                    {platos.filter(p => {
+                      const cat = categorias.find(c => c.id === p.categoria_id);
+                      return cat?.nombre.toLowerCase().includes(menuCursoActivo);
+                    }).map(p => {
+                      const plus = p.plus || 0;
+                      return (
+                        <button key={p.id} onClick={() => {
+                          if (menuCursoActivo === "primero") setMenuDelDia(prev => prev ? { ...prev, primero_id: p.id } : null);
+                          else if (menuCursoActivo === "segundo") setMenuDelDia(prev => prev ? { ...prev, segundo_id: p.id } : null);
+                          else setMenuDelDia(prev => prev ? { ...prev, postre_id: p.id } : null);
+                          setMenuCursoActivo(null);
+                        }}
+                          className="text-left p-3 border-2 border-gray-200 rounded-xl hover:border-amber-300 hover:bg-amber-50 transition-all">
+                          <div className="text-sm font-medium text-gray-800">{p.nombre}</div>
+                          {plus > 0 && <div className="text-xs text-orange-500">+{plus.toFixed(2)}€</div>}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

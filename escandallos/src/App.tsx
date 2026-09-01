@@ -20,6 +20,7 @@ import Caja from "./pages/Caja";
 import PreciosCaja from "./pages/PreciosCaja";
 import PlatosCaja from "./pages/PlatosCaja";
 import Despieces from "./pages/Despieces";
+import MenuDelDia from "./pages/MenuDelDia";
 
 
 interface SidebarLink {
@@ -45,6 +46,7 @@ const sections: SidebarSection[] = [
       { to: "/guarniciones", label: "Guarniciones", icon: "🥗" },
       { to: "/fichas-tecnicas", label: "Fichas Técnicas", icon: "🧾" },
       { to: "/fichas-receta", label: "Fichas Receta", icon: "📖" },
+      { to: "/menu-del-dia", label: "Menú del Día", icon: "📅" },
     ],
   },
   {
@@ -245,6 +247,7 @@ function App() {
           <Route path="/lotes" element={<Lotes />} />
           <Route path="/produccion" element={<Produccion />} />
           <Route path="/despieces" element={<Despieces />} />
+          <Route path="/menu-del-dia" element={<MenuDelDia />} />
         </Routes>
       </main>
     </div>
