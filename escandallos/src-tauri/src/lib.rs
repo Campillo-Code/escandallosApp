@@ -3046,6 +3046,89 @@ async fn delete_plato_caja(id: i64) -> Result<(), String> {
 }
 
 // ========================================
+// WHATSAPP PEDIDOS
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct WhatsappPedido {
+    pub id: i64,
+    pub telefono: String,
+    pub nombre_cliente: Option<String>,
+    pub items: String,
+    pub total: f64,
+    pub notas: Option<String>,
+    pub tipo: String,
+    pub estado: String,
+    pub motivo_cancelacion: Option<String>,
+    pub fecha_entrega: Option<String>,
+    pub created_at: String,
+}
+
+#[tauri::command]
+async fn get_whatsapp_pedidos(estado: Option<String>) -> Result<Vec<WhatsappPedido>, String> {
+    let pool = &db::get_pool();
+    let base_sql = "SELECT id, telefono, nombre_cliente, CAST(items AS CHAR) AS items, CAST(total AS DOUBLE) AS total, notas, tipo, estado, motivo_cancelacion, DATE_FORMAT(fecha_entrega, '%Y-%m-%d') AS fecha_entrega, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS created_at FROM whatsapp_pedidos";
+    let sql = match &estado {
+        Some(_) => format!("{} WHERE estado = ? ORDER BY created_at DESC", base_sql),
+        None => format!("{} ORDER BY created_at DESC", base_sql),
+    };
+    let rows = if let Some(ref e) = estado {
+        sqlx::query(&sql).bind(e).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query(&sql).fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    let result: Vec<WhatsappPedido> = rows.iter().map(|r| {
+        WhatsappPedido {
+            id: r.try_get("id").unwrap_or_default(),
+            telefono: r.try_get("telefono").unwrap_or_default(),
+            nombre_cliente: r.try_get("nombre_cliente").ok().flatten(),
+            items: r.try_get("items").unwrap_or_default(),
+            total: r.try_get::<f64, _>("total").unwrap_or(0.0),
+            notas: r.try_get("notas").ok().flatten(),
+            tipo: r.try_get("tipo").unwrap_or("pedido".to_string()),
+            estado: r.try_get("estado").unwrap_or("pendiente".to_string()),
+            motivo_cancelacion: r.try_get("motivo_cancelacion").ok().flatten(),
+            fecha_entrega: r.try_get("fecha_entrega").ok().flatten(),
+            created_at: r.try_get("created_at").unwrap_or_default(),
+        }
+    }).collect();
+    Ok(result)
+}
+
+#[tauri::command]
+async fn update_whatsapp_pedido_estado(id: i64, estado: String, motivo: Option<String>) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("UPDATE whatsapp_pedidos SET estado = ?, motivo_cancelacion = ? WHERE id = ?")
+        .bind(&estado).bind(&motivo).bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_whatsapp_pedidos_nuevos() -> Result<Vec<WhatsappPedido>, String> {
+    let pool = &db::get_pool();
+    let rows = sqlx::query(
+        "SELECT id, telefono, nombre_cliente, CAST(items AS CHAR) AS items, CAST(total AS DOUBLE) AS total, notas, tipo, estado, motivo_cancelacion, DATE_FORMAT(fecha_entrega, '%Y-%m-%d') AS fecha_entrega, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS created_at FROM whatsapp_pedidos WHERE estado = 'pendiente' ORDER BY created_at DESC"
+    ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let result: Vec<WhatsappPedido> = rows.iter().map(|r| {
+        WhatsappPedido {
+            id: r.try_get("id").unwrap_or_default(),
+            telefono: r.try_get("telefono").unwrap_or_default(),
+            nombre_cliente: r.try_get("nombre_cliente").ok().flatten(),
+            items: r.try_get("items").unwrap_or_default(),
+            total: r.try_get::<f64, _>("total").unwrap_or(0.0),
+            notas: r.try_get("notas").ok().flatten(),
+            tipo: r.try_get("tipo").unwrap_or("pedido".to_string()),
+            estado: r.try_get("estado").unwrap_or("pendiente".to_string()),
+            motivo_cancelacion: r.try_get("motivo_cancelacion").ok().flatten(),
+            fecha_entrega: r.try_get("fecha_entrega").ok().flatten(),
+            created_at: r.try_get("created_at").unwrap_or_default(),
+        }
+    }).collect();
+    Ok(result)
+}
+
+// ========================================
 // MENU DEL DIA
 // ========================================
 
@@ -3539,6 +3622,9 @@ pub fn run() {
             create_plato_caja,
             update_plato_caja,
             delete_plato_caja,
+            get_whatsapp_pedidos,
+            update_whatsapp_pedido_estado,
+            get_whatsapp_pedidos_nuevos,
             get_menu_del_dia,
             get_menu_del_dia_hoy,
             save_menu_del_dia,

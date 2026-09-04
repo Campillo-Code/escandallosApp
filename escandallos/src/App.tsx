@@ -21,6 +21,7 @@ import PreciosCaja from "./pages/PreciosCaja";
 import PlatosCaja from "./pages/PlatosCaja";
 import Despieces from "./pages/Despieces";
 import MenuDelDia from "./pages/MenuDelDia";
+import Pedidos from "./pages/Pedidos";
 
 
 interface SidebarLink {
@@ -122,7 +123,7 @@ function App() {
           {/* Caja */}
           {(() => {
             const isOpen = openSections["caja"];
-            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja" || location.pathname === "/menu-del-dia";
+            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja" || location.pathname === "/menu-del-dia" || location.pathname === "/pedidos";
             return (
               <div>
                 <button
@@ -163,6 +164,12 @@ function App() {
                           ? "bg-green-600 text-white"
                           : "text-slate-400 hover:bg-slate-700 hover:text-white"
                       }`}>Menú del Día</a>
+                    <a href="/pedidos"
+                      className={`block px-3 py-1.5 rounded text-sm transition-colors ${
+                        location.pathname === "/pedidos"
+                          ? "bg-green-600 text-white"
+                          : "text-slate-400 hover:bg-slate-700 hover:text-white"
+                      }`}>Pedidos</a>
                   </div>
                 )}
               </div>
@@ -253,6 +260,7 @@ function App() {
           <Route path="/produccion" element={<Produccion />} />
           <Route path="/despieces" element={<Despieces />} />
           <Route path="/menu-del-dia" element={<MenuDelDia />} />
+          <Route path="/pedidos" element={<Pedidos />} />
         </Routes>
       </main>
     </div>

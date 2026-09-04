@@ -255,6 +255,17 @@ async fn run_migrations(pool: &MySqlPool) {
         UNIQUE KEY idx_menu_fecha (fecha)
     )").execute(pool).await;
 
+    // WHATSAPP PEDIDOS: Add columns if not exists
+    let check_tipo: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'whatsapp_pedidos' AND COLUMN_NAME = 'tipo'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_tipo.is_none() {
+        let _ = sqlx::query("ALTER TABLE whatsapp_pedidos ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'pedido' AFTER notas").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE whatsapp_pedidos ADD COLUMN motivo_cancelacion TEXT NULL AFTER estado").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE whatsapp_pedidos ADD COLUMN fecha_entrega DATE NULL AFTER motivo_cancelacion").execute(pool).await;
+        println!("ALTER TABLE whatsapp_pedidos ADD tipo/motivo/fecha_entrega completed");
+    }
+
     // CAJA: Add metodo_pago to caja_tickets if not exists
     let check_mp: Option<(String,)> = sqlx::query_as(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_tickets' AND COLUMN_NAME = 'metodo_pago'"
