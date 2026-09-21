@@ -179,13 +179,15 @@ export default function Pedidos() {
     if (formItems.length === 0) { alert("Añade al menos un plato"); return; }
     try {
       await invoke("create_whatsapp_pedido_manual", {
-        telefono: formTelefono || "manual",
-        nombreCliente: formNombre || null,
-        items: formItems,
-        total: formTotal,
-        notas: formNotas || null,
-        tipo: formTipo,
-        fechaEntrega: formFechaEntrega || null,
+        input: {
+          telefono: formTelefono || "manual",
+          nombre_cliente: formNombre || null,
+          items: formItems,
+          total: formTotal,
+          notas: formNotas || null,
+          tipo: formTipo,
+          fecha_entrega: formFechaEntrega || null,
+        },
       });
       setShowForm(false);
       setFormNombre("");
