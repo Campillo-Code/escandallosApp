@@ -3128,6 +3128,35 @@ async fn get_whatsapp_pedidos_nuevos() -> Result<Vec<WhatsappPedido>, String> {
     Ok(result)
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PedidoManualInput {
+    pub telefono: String,
+    pub nombre_cliente: Option<String>,
+    pub items: Vec<CajaTicketItem>,
+    pub total: f64,
+    pub notas: Option<String>,
+    pub tipo: String,
+    pub fecha_entrega: Option<String>,
+}
+
+#[tauri::command]
+async fn create_whatsapp_pedido_manual(input: PedidoManualInput) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    let items_json = serde_json::to_string(&input.items).map_err(|e| e.to_string())?;
+    let result = sqlx::query(
+        "INSERT INTO whatsapp_pedidos (telefono, nombre_cliente, items, total, notas, tipo, estado, fecha_entrega) VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?)"
+    )
+    .bind(&input.telefono)
+    .bind(&input.nombre_cliente)
+    .bind(&items_json)
+    .bind(input.total)
+    .bind(&input.notas)
+    .bind(&input.tipo)
+    .bind(&input.fecha_entrega)
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(result.last_insert_id() as i64)
+}
+
 // ========================================
 // MENU DEL DIA
 // ========================================
@@ -3625,6 +3654,7 @@ pub fn run() {
             get_whatsapp_pedidos,
             update_whatsapp_pedido_estado,
             get_whatsapp_pedidos_nuevos,
+            create_whatsapp_pedido_manual,
             get_menu_del_dia,
             get_menu_del_dia_hoy,
             save_menu_del_dia,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ShoppingCart, Check, X, Clock, Package } from "lucide-react";
+import { ShoppingCart, Check, X, Clock, Package, Plus } from "lucide-react";
+import SearchableSelect from "../components/SearchableSelect";
 
 interface WhatsappPedido {
   id: number;
@@ -24,6 +25,22 @@ interface TicketItem {
   subtotal: number;
 }
 
+interface CajaCategoria {
+  id: number;
+  nombre: string;
+  precio: number;
+  plus: number;
+  activa: boolean;
+}
+
+interface PlatoCaja {
+  id: number;
+  categoria_id: number;
+  nombre: string;
+  plus: number;
+  activo: boolean;
+}
+
 export default function Pedidos() {
   const [pedidos, setPedidos] = useState<WhatsappPedido[]>([]);
   const [filtro, setFiltro] = useState<string>("pendiente");
@@ -34,6 +51,17 @@ export default function Pedidos() {
   const [pedidoCount, setPedidoCount] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const prevCountRef = useRef(0);
+
+  // Formulario nuevo pedido
+  const [showForm, setShowForm] = useState(false);
+  const [formTipo, setFormTipo] = useState<"pedido" | "encargo">("pedido");
+  const [formNombre, setFormNombre] = useState("");
+  const [formTelefono, setFormTelefono] = useState("");
+  const [formItems, setFormItems] = useState<{ categoria: string; descripcion: string; cantidad: number; precio_unitario: number; subtotal: number }[]>([]);
+  const [formNotas, setFormNotas] = useState("");
+  const [formFechaEntrega, setFormFechaEntrega] = useState("");
+  const [categorias, setCategorias] = useState<CajaCategoria[]>([]);
+  const [platos, setPlatos] = useState<PlatoCaja[]>([]);
 
   const loadPedidos = async () => {
     try {
@@ -51,9 +79,21 @@ export default function Pedidos() {
     finally { setLoading(false); }
   };
 
+  const loadCatalogo = async () => {
+    try {
+      const [cats, plats] = await Promise.all([
+        invoke<CajaCategoria[]>("get_caja_categorias"),
+        invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: null }),
+      ]);
+      setCategorias(cats.filter(c => c.activa));
+      setPlatos(plats.filter(p => p.activo));
+    } catch (e) { console.error(e); }
+  };
+
   useEffect(() => {
     setLoading(true);
     loadPedidos();
+    loadCatalogo();
     const interval = setInterval(loadPedidos, 10000);
     return () => clearInterval(interval);
   }, [filtro]);
@@ -107,19 +147,73 @@ export default function Pedidos() {
     }
   };
 
+  const addItemManual = (platoId: number) => {
+    const plato = platos.find(p => p.id === platoId);
+    if (!plato) return;
+    const cat = categorias.find(c => c.id === plato.categoria_id);
+    const precio = (cat?.precio || 0) + (plato.plus || 0);
+    setFormItems(prev => [...prev, {
+      categoria: cat?.nombre || "",
+      descripcion: plato.nombre,
+      cantidad: 1,
+      precio_unitario: precio,
+      subtotal: precio,
+    }]);
+  };
+
+  const updateItemCantidad = (index: number, cantidad: number) => {
+    setFormItems(prev => prev.map((item, i) => i === index ? {
+      ...item,
+      cantidad,
+      subtotal: item.precio_unitario * cantidad,
+    } : item));
+  };
+
+  const removeItem = (index: number) => {
+    setFormItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const formTotal = formItems.reduce((sum, item) => sum + item.subtotal, 0);
+
+  const handleCrearPedido = async () => {
+    if (formItems.length === 0) { alert("Añade al menos un plato"); return; }
+    try {
+      await invoke("create_whatsapp_pedido_manual", {
+        telefono: formTelefono || "manual",
+        nombreCliente: formNombre || null,
+        items: formItems,
+        total: formTotal,
+        notas: formNotas || null,
+        tipo: formTipo,
+        fechaEntrega: formFechaEntrega || null,
+      });
+      setShowForm(false);
+      setFormNombre("");
+      setFormTelefono("");
+      setFormItems([]);
+      setFormNotas("");
+      setFormFechaEntrega("");
+      loadPedidos();
+    } catch (e) { alert("Error: " + e); }
+  };
+
   return (
     <div className="p-6">
       <audio ref={audioRef} preload="auto" />
 
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-          <ShoppingCart size={28} /> Pedidos WhatsApp
+          <ShoppingCart size={28} /> Pedidos
           {pedidoCount > 0 && (
             <span className="ml-2 bg-red-500 text-white text-sm font-bold px-2 py-0.5 rounded-full animate-pulse">
               {pedidoCount} nuevos
             </span>
           )}
         </h2>
+        <button onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+          <Plus size={18} /> Nuevo Pedido
+        </button>
       </div>
 
       {/* Filtros */}
@@ -245,6 +339,131 @@ export default function Pedidos() {
             <div className="flex gap-3 justify-end">
               <button onClick={() => setMotivoCancel(null)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Volver</button>
               <button onClick={confirmCancel} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Cancelar pedido</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Nuevo Pedido */}
+      {showForm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <h2 className="text-lg font-semibold">Nuevo Pedido</h2>
+              <button onClick={() => setShowForm(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+            </div>
+            <div className="flex-1 overflow-auto p-6 space-y-4">
+              {/* Tipo */}
+              <div className="flex gap-2">
+                <button onClick={() => setFormTipo("pedido")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${formTipo === "pedido" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                  🛒 Pedido
+                </button>
+                <button onClick={() => setFormTipo("encargo")}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${formTipo === "encargo" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                  📦 Encargo
+                </button>
+              </div>
+
+              {/* Datos cliente */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del cliente</label>
+                  <input value={formNombre} onChange={(e) => setFormNombre(e.target.value)}
+                    placeholder="Nombre" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                  <input value={formTelefono} onChange={(e) => setFormTelefono(e.target.value)}
+                    placeholder="600 123 456" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+
+              {formTipo === "encargo" && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de entrega</label>
+                  <input type="date" value={formFechaEntrega} onChange={(e) => setFormFechaEntrega(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              )}
+
+              {/* Añadir plato */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Añadir plato</label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={platos.map(p => {
+                        const cat = categorias.find(c => c.id === p.categoria_id);
+                        const precio = (cat?.precio || 0) + (p.plus || 0);
+                        return { value: p.id, label: `${p.nombre} (${cat?.nombre || ""}) - ${precio.toFixed(2)}€` };
+                      })}
+                      value={0}
+                      onChange={(val) => { if (val) addItemManual(val); }}
+                      placeholder="Seleccionar plato..."
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Lista de items */}
+              {formItems.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left px-3 py-2">Plato</th>
+                        <th className="text-center px-3 py-2">Uds</th>
+                        <th className="text-right px-3 py-2">Precio</th>
+                        <th className="text-right px-3 py-2">Subtotal</th>
+                        <th className="w-8"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {formItems.map((item, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-2">
+                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded mr-1">{item.categoria}</span>
+                            {item.descripcion}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <input type="number" min="1" value={item.cantidad}
+                              onChange={(e) => updateItemCantidad(i, parseInt(e.target.value) || 1)}
+                              className="w-16 border rounded px-2 py-1 text-center text-sm" />
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono">{item.precio_unitario.toFixed(2)} €</td>
+                          <td className="px-3 py-2 text-right font-mono font-medium">{item.subtotal.toFixed(2)} €</td>
+                          <td className="px-3 py-2">
+                            <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 font-bold">
+                      <tr>
+                        <td colSpan={3} className="px-3 py-2 text-right">Total:</td>
+                        <td className="px-3 py-2 text-right font-mono">{formTotal.toFixed(2)} €</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+
+              {/* Notas */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                <textarea value={formNotas} onChange={(e) => setFormNotas(e.target.value)}
+                  placeholder="Notas adicionales..."
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-16" />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end px-6 py-4 border-t bg-gray-50 rounded-b-xl">
+              <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={handleCrearPedido} disabled={formItems.length === 0}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium">
+                Crear pedido ({formTotal.toFixed(2)} €)
+              </button>
             </div>
           </div>
         </div>
