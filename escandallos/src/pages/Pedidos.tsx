@@ -299,17 +299,25 @@ export default function Pedidos() {
                           className="p-1.5 bg-green-100 text-green-700 rounded-lg hover:bg-green-200" title="Confirmar">
                           <Check size={14} />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); handleCobrar(pedido); }}
-                          className="p-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200" title="Cobrar">
-                          <CreditCard size={14} />
-                        </button>
                         <button onClick={(e) => { e.stopPropagation(); handleCancel(pedido.id); }}
                           className="p-1.5 bg-red-100 text-red-700 rounded-lg hover:bg-red-200" title="Cancelar">
                           <X size={14} />
                         </button>
                       </div>
                     )}
-                    {pedido.estado !== "pendiente" && (
+                    {pedido.estado === "confirmado" && (
+                      <div className="flex gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); handleCobrar(pedido); }}
+                          className="p-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200" title="Cobrar">
+                          <CreditCard size={14} />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); handleDelete(pedido.id); }}
+                          className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Eliminar">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                    {pedido.estado !== "pendiente" && pedido.estado !== "confirmado" && (
                       <button onClick={(e) => { e.stopPropagation(); handleDelete(pedido.id); }}
                         className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50" title="Eliminar">
                         <Trash2 size={14} />
