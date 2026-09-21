@@ -1890,8 +1890,20 @@ async fn import_ventas(rows: Vec<VentaCSVRow>) -> Result<i64, String> {
 #[tauri::command]
 async fn delete_venta(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
-    sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
-        .execute(pool).await.map_err(|e| e.to_string())?;
+    // Verificar si la venta tiene ticket asociado
+    let ticket_id: Option<i64> = sqlx::query_scalar("SELECT ticket_id FROM ventas WHERE id = ?")
+        .bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    if let Some(tid) = ticket_id {
+        // Borrar todas las ventas del ticket y el ticket
+        sqlx::query("DELETE FROM ventas WHERE ticket_id = ?").bind(tid)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM caja_tickets WHERE id = ?").bind(tid)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+    } else {
+        // Borrar solo la venta (era una venta manual, no de ticket)
+        sqlx::query("DELETE FROM ventas WHERE id = ?").bind(id)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
