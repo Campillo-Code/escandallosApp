@@ -142,10 +142,18 @@ export default function Pedidos() {
   };
 
   const handleCobrar = async (pedido: WhatsappPedido) => {
-    // Marcar como cobrado y llevar a la caja
     try {
       await invoke("update_whatsapp_pedido_estado", { id: pedido.id, estado: "cobrado", motivo: null });
-      // Navegar a la caja
+      // Guardar datos del pedido para que la caja los cargue
+      const items = getItems(pedido.items);
+      localStorage.setItem("pedido_cobrar", JSON.stringify({
+        pedidoId: pedido.id,
+        nombre: pedido.nombre_cliente,
+        telefono: pedido.telefono,
+        items,
+        total: pedido.total,
+        notas: pedido.notas,
+      }));
       window.location.href = "/caja";
     } catch (e) { alert("Error: " + e); }
   };

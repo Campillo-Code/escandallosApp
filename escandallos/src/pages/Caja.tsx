@@ -111,6 +111,16 @@ export default function Caja() {
     invoke<{ primero_id: number | null; segundo_id: number | null; postre_id: number | null; precio_base: number }[]>("get_menu_del_dia_hoy")
       .then(data => { if (data) setMenuDelDia(data as any); })
       .catch(() => {});
+    // Cargar pedido pendiente de cobro
+    const pedidoCobrar = localStorage.getItem("pedido_cobrar");
+    if (pedidoCobrar) {
+      try {
+        const pedido = JSON.parse(pedidoCobrar);
+        setTicket(pedido.items);
+        setNotas(pedido.notas || "");
+        localStorage.removeItem("pedido_cobrar");
+      } catch (e) { console.error(e); }
+    }
   }, []);
 
   const loadPlatos = async (catId: number) => {
