@@ -3096,6 +3096,14 @@ async fn get_whatsapp_pedidos(estado: Option<String>) -> Result<Vec<WhatsappPedi
 }
 
 #[tauri::command]
+async fn delete_whatsapp_pedido(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM whatsapp_pedidos WHERE id = ?")
+        .bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn update_whatsapp_pedido_estado(id: i64, estado: String, motivo: Option<String>) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query("UPDATE whatsapp_pedidos SET estado = ?, motivo_cancelacion = ? WHERE id = ?")
@@ -3655,6 +3663,7 @@ pub fn run() {
             update_whatsapp_pedido_estado,
             get_whatsapp_pedidos_nuevos,
             create_whatsapp_pedido_manual,
+            delete_whatsapp_pedido,
             get_menu_del_dia,
             get_menu_del_dia_hoy,
             save_menu_del_dia,
