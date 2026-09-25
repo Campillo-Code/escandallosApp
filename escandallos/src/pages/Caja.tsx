@@ -62,6 +62,7 @@ export default function Caja() {
   const [ticketsHoy, setTicketsHoy] = useState<CajaTicket[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [showDatáfonoModal, setShowDatáfonoModal] = useState(false);
   const [error, setError] = useState("");
 
   const getLocalDate = () => {
@@ -225,6 +226,10 @@ export default function Caja() {
 
   const cobrar = async () => {
     if (ticket.length === 0) return;
+    if (metodoPago === "tarjeta") {
+      setShowDatáfonoModal(true);
+      return;
+    }
     try {
       console.log("[Caja] Cobrando:", { items: ticket, total: totalTicket, notas, metodoPago });
       await invoke("create_caja_ticket", {
@@ -237,6 +242,22 @@ export default function Caja() {
       await loadResumen();
       await loadTicketsHoy();
     } catch (e) { console.error("[Caja] Error cobrando:", e); setError(String(e)); }
+  };
+
+  const confirmarDatáfono = async () => {
+    try {
+      console.log("[Caja] Confirmando datáfono:", { items: ticket, total: totalTicket, notas });
+      await invoke("create_caja_ticket", {
+        input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: "tarjeta" }
+      });
+      console.log("[Caja] Ticket datáfono creado OK");
+      setTicket([]);
+      setNotas("");
+      setMetodoPago("efectivo");
+      setShowDatáfonoModal(false);
+      await loadResumen();
+      await loadTicketsHoy();
+    } catch (e) { console.error("[Caja] Error datáfono:", e); setError(String(e)); }
   };
 
   const deleteTicket = async (id: number) => {
@@ -365,11 +386,10 @@ export default function Caja() {
             </div>
             <div className="mb-3">
               <label className="block text-xs text-gray-500 mb-1">Método de pago</label>
-              <div className="grid grid-cols-3 gap-1">
+              <div className="grid grid-cols-2 gap-1">
                 {[
                   { id: "efectivo", label: "Efectivo" },
                   { id: "tarjeta", label: "Tarjeta" },
-                  { id: "qr", label: "QR" },
                 ].map(m => (
                   <button key={m.id} onClick={() => setMetodoPago(m.id)}
                     className={`py-1.5 text-xs font-medium rounded-lg border transition-colors ${
@@ -647,10 +667,9 @@ export default function Caja() {
                             {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
                               <span className={`ml-2 inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
                                 ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :
-                                ticket.metodo_pago === "qr" ? "bg-cyan-100 text-cyan-700" :
                                 "bg-gray-100 text-gray-700"
                               }`}>
-                                {ticket.metodo_pago === "tarjeta" ? "💳 Tarjeta" : ticket.metodo_pago === "qr" ? "📱 QR" : ticket.metodo_pago}
+                                {ticket.metodo_pago === "tarjeta" ? "💳 Tarjeta" : ticket.metodo_pago}
                               </span>
                             )}
                           </div>
@@ -787,6 +806,36 @@ export default function Caja() {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Datáfono */}
+      {showDatáfonoModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8 text-center">
+            <div className="mb-2 text-gray-500 text-sm font-medium uppercase tracking-wide">Total a cobrar</div>
+            <div className="text-6xl font-black text-gray-900 mb-6">{totalTicket.toFixed(2)} €</div>
+
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
+              <p className="text-sm text-amber-800 font-medium mb-1">Instrucciones:</p>
+              <ol className="text-sm text-amber-700 list-decimal list-inside space-y-1">
+                <li>Introduce este importe en el datáfono</li>
+                <li>Entrega el datáfono al cliente para que pague</li>
+                <li>Cuando el pago se haya completado, pulsa <b>Confirmar</b></li>
+              </ol>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowDatáfonoModal(false)}
+                className="flex-1 py-3 border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={confirmarDatáfono}
+                className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors">
+                Confirmar pago
+              </button>
             </div>
           </div>
         </div>

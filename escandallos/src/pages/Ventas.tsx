@@ -272,10 +272,9 @@ export default function Ventas() {
                         {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
                           <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
                             ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :
-                            ticket.metodo_pago === "qr" ? "bg-cyan-100 text-cyan-700" :
                             "bg-gray-100 text-gray-700"
                           }`}>
-                            {ticket.metodo_pago === "tarjeta" ? "💳" : ticket.metodo_pago === "qr" ? "📱" : ticket.metodo_pago}
+                            {ticket.metodo_pago === "tarjeta" ? "💳" : ticket.metodo_pago}
                           </span>
                         )}
                         <span className="font-bold text-gray-800 w-20 text-right shrink-0">{ticket.total.toFixed(2)} €</span>
