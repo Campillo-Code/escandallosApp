@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Trash2, Download, ChevronDown, ChevronRight } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeFile } from "@tauri-apps/plugin-fs";
+import { homeDir } from "@tauri-apps/api/path";
 import SearchBar from "../components/SearchBar";
 import DateInput from "../components/DateInput";
 
-interface Venta { id: number; fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; }
+interface Venta { id: number; fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; metodo_pago: string | null; }
 interface VentaCSVRow { fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; }
 
 interface TicketItem {
@@ -128,7 +131,7 @@ export default function Ventas() {
     } catch (e) { alert("Error: " + e); }
   };
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
     const rows = tab === "tickets"
       ? tickets.flatMap(t => {
           const items: TicketItem[] = JSON.parse(t.items);
@@ -149,17 +152,20 @@ export default function Ventas() {
           Cantidad: v.cantidad,
           "Precio Unitario": v.precio_unitario.toFixed(2),
           Total: v.total_venta.toFixed(2),
+          "Método Pago": v.metodo_pago || "efectivo",
         }));
     if (rows.length === 0) { alert("No hay datos para exportar"); return; }
     const headers = Object.keys(rows[0]);
     const csv = [headers.join(";"), ...rows.map(r => headers.map(h => String((r as Record<string, unknown>)[h])).join(";"))].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `ventas_${getLocalDateStr(new Date())}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const home = await homeDir();
+    const path = await save({
+      defaultPath: `${home}/ventas_${getLocalDateStr(new Date())}.csv`,
+      filters: [{ name: "CSV", extensions: ["csv"] }],
+    });
+    if (path) {
+      const encoder = new TextEncoder();
+      await writeFile(path, encoder.encode("\uFEFF" + csv));
+    }
   };
 
   const totalVentas = ventas.reduce((s, v) => s + v.total_venta, 0);
@@ -222,6 +228,7 @@ export default function Ventas() {
                       <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Cantidad</th>
                       <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Precio ud.</th>
                       <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Total</th>
+                      <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Pago</th>
                       <th className="text-right px-4 py-3 text-sm font-medium text-gray-600"></th>
                     </tr>
                   </thead>
@@ -233,6 +240,16 @@ export default function Ventas() {
                         <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.cantidad}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 text-right">{v.precio_unitario.toFixed(2)}€</td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{v.total_venta.toFixed(2)}€</td>
+                        <td className="px-4 py-3 text-sm text-center">
+                          {v.metodo_pago && v.metodo_pago !== "efectivo" && (
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                              v.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :
+                              "bg-gray-100 text-gray-700"
+                            }`}>
+                              {v.metodo_pago === "tarjeta" ? "💳" : v.metodo_pago}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-sm text-right">
                           <button onClick={() => handleDelete(v.id)} className="text-red-600 hover:text-red-800"><Trash2 size={14} /></button>
                         </td>

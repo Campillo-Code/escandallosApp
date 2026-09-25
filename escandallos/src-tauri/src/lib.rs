@@ -1828,6 +1828,7 @@ pub struct Venta {
     pub cantidad: i64,
     pub precio_unitario: f64,
     pub total_venta: f64,
+    pub metodo_pago: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1852,9 +1853,9 @@ pub struct VentaCSVRow {
 async fn get_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<Venta>, String> {
     let pool = &db::get_pool();
     let sql = if let (Some(_), Some(_)) = (&fecha_desde, &fecha_hasta) {
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, plato_nombre, cantidad, CAST(precio_unitario AS DOUBLE) AS precio_unitario, CAST(total_venta AS DOUBLE) AS total_venta FROM ventas WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, plato_nombre"
+        "SELECT v.id, DATE_FORMAT(v.fecha, '%Y-%m-%d') AS fecha, v.plato_nombre, v.cantidad, CAST(v.precio_unitario AS DOUBLE) AS precio_unitario, CAST(v.total_venta AS DOUBLE) AS total_venta, t.metodo_pago FROM ventas v LEFT JOIN caja_tickets t ON v.ticket_id = t.id WHERE v.fecha BETWEEN ? AND ? ORDER BY v.fecha DESC, v.plato_nombre"
     } else {
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, plato_nombre, cantidad, CAST(precio_unitario AS DOUBLE) AS precio_unitario, CAST(total_venta AS DOUBLE) AS total_venta FROM ventas ORDER BY fecha DESC, plato_nombre"
+        "SELECT v.id, DATE_FORMAT(v.fecha, '%Y-%m-%d') AS fecha, v.plato_nombre, v.cantidad, CAST(v.precio_unitario AS DOUBLE) AS precio_unitario, CAST(v.total_venta AS DOUBLE) AS total_venta, t.metodo_pago FROM ventas v LEFT JOIN caja_tickets t ON v.ticket_id = t.id ORDER BY v.fecha DESC, v.plato_nombre"
     };
     let mut q = sqlx::query(sql);
     if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
@@ -1869,6 +1870,7 @@ async fn get_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) ->
             cantidad: r.try_get("cantidad").unwrap_or_default(),
             precio_unitario: r.try_get::<f64, _>("precio_unitario").unwrap_or(0.0),
             total_venta: r.try_get::<f64, _>("total_venta").unwrap_or(0.0),
+            metodo_pago: r.try_get("metodo_pago").ok().flatten(),
         }
     }).collect();
     Ok(result)
