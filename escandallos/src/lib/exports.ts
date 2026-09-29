@@ -40,6 +40,9 @@ interface RecetaData {
       coste: number;
     }[];
   }[];
+  iva_porcentaje?: number;
+  base_imponible?: number | null;
+  cuota_iva?: number | null;
 }
 
 export async function exportRecetaPDF(receta: RecetaData) {
@@ -120,6 +123,11 @@ export async function exportRecetaPDF(receta: RecetaData) {
   }
   if (receta.precio_venta != null) {
     doc.text(`Precio venta: ${receta.precio_venta.toFixed(2)} €/porción`, 14, y);
+  }
+  if (receta.base_imponible != null && receta.cuota_iva != null && receta.iva_porcentaje) {
+    doc.text(`Base imponible: ${receta.base_imponible.toFixed(2)} €`, 14, y + 8);
+    doc.text(`IVA (${receta.iva_porcentaje}%): ${receta.cuota_iva.toFixed(2)} €`, 120, y + 8);
+    y += 8;
   }
 
   if (receta.guarniciones && receta.guarniciones.length > 0) {
@@ -887,6 +895,9 @@ interface FichaRecetaData {
   peso_por_racion?: number | null;
   notas_adicionales: string | null;
   fotos: string | null;
+  iva_porcentaje?: number;
+  base_imponible?: number | null;
+  cuota_iva?: number | null;
 }
 
 export async function exportFichaRecetaPDF(ficha: FichaRecetaData) {
@@ -1149,7 +1160,9 @@ export async function exportFichaRecetaPDF(ficha: FichaRecetaData) {
 
   // PRECIO MÍNIMO SUGERIDO/PORCIÓN
   const margen = ficha.margen_porcentaje ?? 50;
-  const precioMinimo = ficha.coste_porcion / (1 - margen / 100);
+  const iva = ficha.iva_porcentaje ?? 10;
+  const baseSugerida = ficha.coste_porcion / (1 - margen / 100);
+  const precioMinimo = baseSugerida * (1 + iva / 100);
   y = sectionHeader(`PRECIO MÍNIMO SUGERIDO/PORCIÓN (margen ${margen}%)`, y);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");

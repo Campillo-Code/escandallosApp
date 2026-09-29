@@ -78,6 +78,9 @@ interface CosteReceta {
   margen_real_pct: number | null;
   precio_venta: number | null;
   ingredientes: CosteIngrediente[];
+  iva_porcentaje: number;
+  base_imponible: number | null;
+  cuota_iva: number | null;
 }
 
 export default function FichasReceta() {
@@ -183,6 +186,9 @@ export default function FichasReceta() {
               peso_por_racion: receta?.peso_por_racion ?? null,
               notas_adicionales: selectedFicha.notas_adicionales,
               fotos: (() => { try { return JSON.parse(selectedFicha.fotos ?? "null"); } catch { return selectedFicha.fotos; } })(),
+              iva_porcentaje: fichaCoste?.iva_porcentaje ?? 10,
+              base_imponible: fichaCoste?.base_imponible ?? null,
+              cuota_iva: fichaCoste?.cuota_iva ?? null,
             });
           }} className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 text-sm">
             <FileText size={14} /> Exportar PDF
@@ -384,16 +390,33 @@ export default function FichasReceta() {
                   <p className="text-xs font-bold tracking-wide">PRECIO MÍNIMO SUGERIDO/PORCIÓN (margen {receta?.margen_porcentaje ?? 50}%)</p>
                 </div>
                 <div className="px-4 py-3">
-                  <div className="flex items-center gap-6">
-                    <div>
-                      <p className="text-xs text-gray-500">Coste/porción: {fichaCoste.coste_porcion.toFixed(2)} €</p>
-                      <p className="text-3xl font-bold text-blue-600">
-                        {(fichaCoste.coste_porcion / (1 - (receta?.margen_porcentaje ?? 50) / 100)).toFixed(2)} €
-                      </p>
-                    </div>
-                  </div>
+                  {(() => {
+                    const margen = receta?.margen_porcentaje ?? 50;
+                    const baseSugerida = fichaCoste.coste_porcion / (1 - margen / 100);
+                    const iva = fichaCoste.iva_porcentaje ?? 10;
+                    const precioSugerido = baseSugerida * (1 + iva / 100);
+                    return (
+                      <div>
+                        <p className="text-xs text-gray-500">Coste/porción: {fichaCoste.coste_porcion.toFixed(2)} €</p>
+                        <p className="text-3xl font-bold text-blue-600">{precioSugerido.toFixed(2)} €</p>
+                        <p className="text-xs text-gray-400">Base: {baseSugerida.toFixed(2)}€ + IVA {iva}%: {(baseSugerida * iva / 100).toFixed(2)}€</p>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
+              {fichaCoste.base_imponible != null && fichaCoste.cuota_iva != null && (
+                <div className="border-b">
+                  <div className="bg-indigo-200 px-4 py-2">
+                    <p className="text-xs font-bold text-indigo-900">DESGLOSE IVA (precio actual)</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 p-4 text-center">
+                    <div><p className="text-xs text-gray-500">Base</p><p className="font-bold">{fichaCoste.base_imponible.toFixed(2)} €</p></div>
+                    <div><p className="text-xs text-gray-500">IVA ({fichaCoste.iva_porcentaje}%)</p><p className="font-bold text-orange-600">{fichaCoste.cuota_iva.toFixed(2)} €</p></div>
+                    <div><p className="text-xs text-gray-500">Total</p><p className="font-bold text-blue-700">{fichaCoste.precio_venta?.toFixed(2)} €</p></div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

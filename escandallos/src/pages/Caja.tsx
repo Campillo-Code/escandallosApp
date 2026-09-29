@@ -18,6 +18,7 @@ interface PlatoCaja {
   plus: number;
   activo: boolean;
   foto: string | null;
+  iva_porcentaje: number;
 }
 
 interface TicketItem {
@@ -26,6 +27,7 @@ interface TicketItem {
   cantidad: number;
   precio_unitario: number;
   subtotal: number;
+  iva_porcentaje: number;
 }
 
 interface CajaTicket {
@@ -178,19 +180,19 @@ export default function Caja() {
 
       if (menuPrimero) {
         const p = platos.find(p => p.id === menuPrimero);
-        items.push({ categoria: catName, descripcion: `Primero: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+        items.push({ categoria: catName, descripcion: `Primero: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0, iva_porcentaje: p?.iva_porcentaje ?? 10 });
       }
       if (menuSegundo) {
         const p = platos.find(p => p.id === menuSegundo);
-        items.push({ categoria: catName, descripcion: `Segundo: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+        items.push({ categoria: catName, descripcion: `Segundo: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0, iva_porcentaje: p?.iva_porcentaje ?? 10 });
       }
       if (menuPostre) {
         const p = platos.find(p => p.id === menuPostre);
-        items.push({ categoria: catName, descripcion: `Postre: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+        items.push({ categoria: catName, descripcion: `Postre: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0, iva_porcentaje: p?.iva_porcentaje ?? 10 });
       }
       if (menuBebida) {
         const p = platos.find(p => p.id === menuBebida);
-        items.push({ categoria: catName, descripcion: `Bebida: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0 });
+        items.push({ categoria: catName, descripcion: `Bebida: ${p?.nombre ?? ""}`, cantidad: 1, precio_unitario: 0, subtotal: 0, iva_porcentaje: p?.iva_porcentaje ?? 10 });
       }
 
       if (items.length === 0) return;
@@ -213,6 +215,7 @@ export default function Caja() {
         cantidad,
         precio_unitario: precio,
         subtotal,
+        iva_porcentaje: p.iva_porcentaje ?? 10,
       }]);
     }
     setShowAddModal(false);
@@ -344,6 +347,7 @@ export default function Caja() {
                     <th className="text-left px-4 py-2 text-xs font-medium text-gray-500">Descripción</th>
                     <th className="text-center px-4 py-2 text-xs font-medium text-gray-500">Uds</th>
                     <th className="text-right px-4 py-2 text-xs font-medium text-gray-500">Precio</th>
+                    <th className="text-center px-4 py-2 text-xs font-medium text-gray-500">IVA</th>
                     <th className="text-right px-4 py-2 text-xs font-medium text-gray-500">Subtotal</th>
                     <th className="w-10"></th>
                   </tr>
@@ -357,6 +361,11 @@ export default function Caja() {
                       <td className="px-4 py-2 text-sm font-medium">{item.descripcion}</td>
                       <td className="px-4 py-2 text-sm text-center">{item.cantidad}</td>
                       <td className="px-4 py-2 text-sm text-right font-mono">{item.precio_unitario.toFixed(2)} €</td>
+                      <td className="px-4 py-2 text-sm text-center">
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${(item.iva_porcentaje ?? 10) === 21 ? "bg-red-100 text-red-700" : "bg-gray-100 text-gray-600"}`}>
+                          {item.iva_porcentaje ?? 10}%
+                        </span>
+                      </td>
                       <td className="px-4 py-2 text-sm text-right font-mono font-semibold">{item.subtotal.toFixed(2)} €</td>
                       <td className="px-2">
                         <button onClick={() => removeItem(i)} className="p-1 text-gray-400 hover:text-red-600 rounded transition-colors">
@@ -375,10 +384,23 @@ export default function Caja() {
         <div className="w-80 flex flex-col gap-4">
           <div className="bg-white rounded-xl border p-4">
             <div className="text-sm text-gray-500 mb-2">Ticket actual</div>
-            <div className="flex justify-between items-baseline mb-3">
+            <div className="flex justify-between items-baseline mb-1">
               <span className="text-sm text-gray-600">{ticket.length} artículos</span>
               <span className="text-3xl font-bold text-gray-800">{totalTicket.toFixed(2)} €</span>
             </div>
+            {ticket.length > 0 && (() => {
+              const baseImponible = ticket.reduce((sum, item) => {
+                const base = item.precio_unitario / (1 + (item.iva_porcentaje ?? 10) / 100);
+                return sum + base * item.cantidad;
+              }, 0);
+              const cuotaIva = totalTicket - baseImponible;
+              return (
+                <div className="text-xs text-gray-400 mb-3 flex justify-between">
+                  <span>Base: {baseImponible.toFixed(2)} €</span>
+                  <span>IVA: {cuotaIva.toFixed(2)} €</span>
+                </div>
+              );
+            })()}
             <div className="mb-3">
               <input value={notas} onChange={(e) => setNotas(e.target.value)}
                 placeholder="Notas (opcional)"
@@ -689,6 +711,19 @@ export default function Caja() {
                             </div>
                           ))}
                         </div>
+                        {(() => {
+                          const baseImponible = items.reduce((sum, item) => {
+                            const base = item.precio_unitario / (1 + (item.iva_porcentaje ?? 10) / 100);
+                            return sum + base * item.cantidad;
+                          }, 0);
+                          const cuotaIva = ticket.total - baseImponible;
+                          return (
+                            <div className="mt-2 text-xs text-gray-400 flex justify-between border-t border-gray-100 pt-2">
+                              <span>Base: {baseImponible.toFixed(2)} €</span>
+                              <span>IVA: {cuotaIva.toFixed(2)} €</span>
+                            </div>
+                          );
+                        })()}
                         {ticket.notas && (
                           <div className="mt-2 text-xs text-gray-400 italic">📝 {ticket.notas}</div>
                         )}
@@ -766,6 +801,7 @@ export default function Caja() {
                       cantidad: 1,
                       precio_unitario: precioTotal,
                       subtotal: precioTotal,
+                      iva_porcentaje: 10,
                     }]);
                     setShowMenuModal(false);
                   }}

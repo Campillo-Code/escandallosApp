@@ -243,6 +243,17 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE caja_platos ADD plus completed");
     }
 
+    // RECETAS: Add iva_porcentaje if not exists
+    let check_iva: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recetas' AND COLUMN_NAME = 'iva_porcentaje'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_iva.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN iva_porcentaje DECIMAL(5,2) DEFAULT 10.0 AFTER peso_por_racion").execute(pool).await;
+        println!("ALTER TABLE recetas ADD iva_porcentaje completed");
+    }
+
+
+
     // MENU DEL DIA: Create table
     let _ = sqlx::query("CREATE TABLE IF NOT EXISTS menu_del_dia (
         id INT AUTO_INCREMENT PRIMARY KEY,

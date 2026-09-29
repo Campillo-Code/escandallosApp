@@ -16,6 +16,7 @@ interface TicketItem {
   cantidad: number;
   precio_unitario: number;
   subtotal: number;
+  iva_porcentaje: number;
 }
 
 interface CajaTicket {
@@ -135,25 +136,42 @@ export default function Ventas() {
     const rows = tab === "tickets"
       ? tickets.flatMap(t => {
           const items: TicketItem[] = JSON.parse(t.items);
-          return items.map(item => ({
-            Fecha: t.fecha,
-            Hora: t.hora,
-            Categoria: item.categoria,
-            Plato: item.descripcion,
-            Cantidad: item.cantidad,
-            "Precio Unitario": item.precio_unitario.toFixed(2),
-            Subtotal: item.subtotal.toFixed(2),
-            "Método Pago": t.metodo_pago || "efectivo",
-          }));
+          return items.map(item => {
+            const iva = item.iva_porcentaje ?? 10;
+            const baseImponible = item.subtotal / (1 + iva / 100);
+            const cuotaIva = item.subtotal - baseImponible;
+            return {
+              Fecha: t.fecha,
+              Hora: t.hora,
+              Categoria: item.categoria,
+              Plato: item.descripcion,
+              Cantidad: item.cantidad,
+              "Precio Unitario": item.precio_unitario.toFixed(2),
+              Subtotal: item.subtotal.toFixed(2),
+              "Base Imponible": baseImponible.toFixed(2),
+              "IVA %": iva,
+              "IVA €": cuotaIva.toFixed(2),
+              Total: item.subtotal.toFixed(2),
+              "Método Pago": t.metodo_pago || "efectivo",
+            };
+          });
         })
-      : ventas.map(v => ({
-          Fecha: v.fecha,
-          Plato: v.plato_nombre,
-          Cantidad: v.cantidad,
-          "Precio Unitario": v.precio_unitario.toFixed(2),
-          Total: v.total_venta.toFixed(2),
-          "Método Pago": v.metodo_pago || "efectivo",
-        }));
+      : ventas.map(v => {
+          const iva = 10;
+          const baseImponible = v.total_venta / (1 + iva / 100);
+          const cuotaIva = v.total_venta - baseImponible;
+          return {
+            Fecha: v.fecha,
+            Plato: v.plato_nombre,
+            Cantidad: v.cantidad,
+            "Precio Unitario": v.precio_unitario.toFixed(2),
+            "Base Imponible": baseImponible.toFixed(2),
+            "IVA %": iva,
+            "IVA €": cuotaIva.toFixed(2),
+            Total: v.total_venta.toFixed(2),
+            "Método Pago": v.metodo_pago || "efectivo",
+          };
+        });
     if (rows.length === 0) { alert("No hay datos para exportar"); return; }
     const headers = Object.keys(rows[0]);
     const csv = [headers.join(";"), ...rows.map(r => headers.map(h => String((r as Record<string, unknown>)[h])).join(";"))].join("\n");

@@ -23,6 +23,7 @@ const recetaSchema = z.object({
   precio_venta: z.string().optional(),
   margen_porcentaje: z.string().optional(),
   peso_por_racion: z.string().optional(),
+  iva_porcentaje: z.string().optional(),
 });
 
 type RecetaFormData = z.infer<typeof recetaSchema>;
@@ -42,6 +43,7 @@ interface Receta {
   precio_venta: number | null;
   margen_porcentaje: number | null;
   peso_por_racion: number | null;
+  iva_porcentaje: number | null;
 }
 
 interface RecetaIngrediente {
@@ -77,6 +79,9 @@ interface CosteReceta {
   margen_real_pct: number | null;
   precio_venta_sugerido: number;
   ingredientes: CosteIngrediente[];
+  iva_porcentaje: number;
+  base_imponible: number | null;
+  cuota_iva: number | null;
 }
 
 interface Ingrediente {
@@ -404,13 +409,20 @@ export default function Recetas() {
         precio_venta: data.precio_venta ? parseFloat(data.precio_venta) : null,
         margen_porcentaje: data.margen_porcentaje ? parseFloat(data.margen_porcentaje) : null,
         peso_por_racion: data.peso_por_racion ? parseFloat(data.peso_por_racion) : null,
+        iva_porcentaje: data.iva_porcentaje ? parseFloat(data.iva_porcentaje) : 10.0,
       };
       if (editingId) {
         await invoke("update_receta", { id: editingId, input });
         setShowForm(false);
         setEditingId(null);
         reset();
-        loadRecetas();
+        await loadRecetas();
+        // Actualizar selectedReceta y costeReceta con los datos nuevos
+        const updated = (await invoke<Receta[]>("get_recetas")).find(r => r.id === editingId);
+        if (updated) {
+          setSelectedReceta(updated);
+          await loadCosteReceta(updated.id);
+        }
       } else {
         const newId = await invoke<number>("create_receta", { input });
         setEditingId(newId);
@@ -469,6 +481,7 @@ export default function Recetas() {
       precio_venta: r.precio_venta != null ? String(r.precio_venta) : "",
       margen_porcentaje: r.margen_porcentaje != null ? String(r.margen_porcentaje) : "",
       peso_por_racion: r.peso_por_racion != null ? String(r.peso_por_racion) : "",
+      iva_porcentaje: r.iva_porcentaje != null ? String(r.iva_porcentaje) : "10",
     });
     setShowForm(true);
   };
@@ -636,6 +649,17 @@ export default function Recetas() {
                 placeholder="Ej: 250"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">IVA (%)</label>
+              <select
+                {...register("iva_porcentaje")}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="10">10% — Comida / Bebida no alcohólica</option>
+                <option value="21">21% — Bebida alcohólica / General</option>
+                <option value="4">4% — Productos básicos</option>
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">&nbsp;</label>
@@ -955,6 +979,9 @@ export default function Recetas() {
                       coste_total: g.coste_total,
                       ingredientes: g.ingredientes,
                     })),
+                    iva_porcentaje: costeReceta.iva_porcentaje,
+                    base_imponible: costeReceta.base_imponible,
+                    cuota_iva: costeReceta.cuota_iva,
                   });
                 }}
                 className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 transition-colors text-sm"
@@ -1030,7 +1057,9 @@ export default function Recetas() {
                 const costeGuarnPorcion = costesGuarniciones.reduce((s, c) => s + c.coste_porcion, 0);
                 const costePorcionComb = costeReceta.coste_porcion + costeGuarnPorcion;
                 const margen = costeReceta.margen_porcentaje ?? 50;
-                const precioSugerido = margen < 100 && margen > 0 ? costePorcionComb / (1 - margen / 100) : costePorcionComb * 2;
+                const baseSugerida = margen < 100 && margen > 0 ? costePorcionComb / (1 - margen / 100) : costePorcionComb * 2;
+                const iva = costeReceta.iva_porcentaje;
+                const precioSugerido = baseSugerida * (1 + iva / 100);
                 return (
                   <>
                     <p className="text-xs text-gray-400 mb-1">
@@ -1038,10 +1067,31 @@ export default function Recetas() {
                       {costeGuarnPorcion > 0 && ` + ${costeGuarnPorcion.toFixed(2)}€ guarn. = ${costePorcionComb.toFixed(2)}€`}
                     </p>
                     <p className="text-2xl font-bold text-blue-600">{precioSugerido.toFixed(2)} €</p>
+                    <p className="text-xs text-gray-400">Base: {baseSugerida.toFixed(2)}€ + IVA {iva}%: {(baseSugerida * iva / 100).toFixed(2)}€</p>
                   </>
                 );
               })()}
             </div>
+
+            {costeReceta.precio_venta != null && costeReceta.base_imponible != null && (
+              <div className="bg-white rounded-lg shadow p-4 mb-4">
+                <p className="text-sm text-gray-500 mb-2">Desglose IVA (precio actual)</p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-gray-50 rounded-lg p-2">
+                    <p className="text-xs text-gray-500">Base imponible</p>
+                    <p className="text-lg font-bold text-gray-800">{costeReceta.base_imponible.toFixed(2)} €</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-2">
+                    <p className="text-xs text-gray-500">IVA ({costeReceta.iva_porcentaje}%)</p>
+                    <p className="text-lg font-bold text-orange-600">{costeReceta.cuota_iva?.toFixed(2)} €</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-2">
+                    <p className="text-xs text-gray-500">Precio final</p>
+                    <p className="text-lg font-bold text-blue-700">{costeReceta.precio_venta.toFixed(2)} €</p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <table className="w-full">

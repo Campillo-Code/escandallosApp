@@ -39,6 +39,7 @@ export default function Guarniciones() {
   const [guarniciones, setGuarniciones] = useState<Guarnicion[]>([]);
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedGuarnicion, setSelectedGuarnicion] = useState<Guarnicion | null>(null);
@@ -61,9 +62,18 @@ export default function Guarniciones() {
   const onSubmit = async (data: GuarnicionFormData) => {
     try {
       const input = { nombre: data.nombre, descripcion: data.descripcion || null, porciones: data.porciones ? parseInt(data.porciones) : null, margen_porcentaje: data.margen_porcentaje ? parseFloat(data.margen_porcentaje) : null, precio_venta: data.precio_venta ? parseFloat(data.precio_venta) : null };
-      if (editingId) await invoke("update_guarnicion", { id: editingId, input });
-      else await invoke("create_guarnicion", { input });
-      setShowForm(false); setEditingId(null); reset(); loadGuarniciones();
+      if (editingId) {
+        await invoke("update_guarnicion", { id: editingId, input });
+        setShowForm(false); setShowEditForm(false); setEditingId(null); reset();
+        await loadGuarniciones();
+        if (selectedGuarnicion) {
+          const updated = (await invoke<Guarnicion[]>("get_guarniciones")).find(g => g.id === editingId);
+          if (updated) setSelectedGuarnicion(updated);
+        }
+      } else {
+        await invoke("create_guarnicion", { input });
+        setShowForm(false); setEditingId(null); reset(); loadGuarniciones();
+      }
     } catch (e) { alert("Error: " + e); }
   };
 
@@ -77,7 +87,7 @@ export default function Guarniciones() {
     } catch (e) { alert("Error: " + e); }
   };
 
-  const handleEdit = (g: Guarnicion) => { setEditingId(g.id); reset({ nombre: g.nombre, descripcion: g.descripcion ?? "", porciones: String(g.porciones ?? 1), margen_porcentaje: String(g.margen_porcentaje ?? 30), precio_venta: g.precio_venta != null ? String(g.precio_venta) : "" }); setShowForm(true); };
+  const handleEdit = (g: Guarnicion) => { setEditingId(g.id); reset({ nombre: g.nombre, descripcion: g.descripcion ?? "", porciones: String(g.porciones ?? 1), margen_porcentaje: String(g.margen_porcentaje ?? 30), precio_venta: g.precio_venta != null ? String(g.precio_venta) : "" }); setShowEditForm(true); };
   const handleDelete = async (id: number) => {
     if (!confirm("¿Eliminar guarnición?")) return;
     try { await invoke("delete_guarnicion", { id }); if (selectedGuarnicion?.id === id) { setSelectedGuarnicion(null); setGuarnIngredientes([]); setCoste(null); } loadGuarniciones(); } catch (e) { alert("Error: " + e); }
@@ -91,12 +101,55 @@ export default function Guarniciones() {
     return (
       <div className="p-6">
         <div className="flex items-center gap-3 mb-6">
-          <button onClick={() => { setSelectedGuarnicion(null); setGuarnIngredientes([]); setCoste(null); }} className="text-gray-500 hover:text-gray-700"><ChevronLeft size={24} /></button>
-          <div>
+          <button onClick={() => { setSelectedGuarnicion(null); setGuarnIngredientes([]); setCoste(null); setShowEditForm(false); setEditingId(null); reset(); }} className="text-gray-500 hover:text-gray-700"><ChevronLeft size={24} /></button>
+          <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-800">{selectedGuarnicion.nombre}</h2>
             {selectedGuarnicion.descripcion && <p className="text-sm text-gray-500">{selectedGuarnicion.descripcion}</p>}
           </div>
+          <button onClick={() => handleEdit(selectedGuarnicion)} className="flex items-center gap-2 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 text-sm">
+            <Pencil size={14} /> Editar
+          </button>
+          <button onClick={() => handleDelete(selectedGuarnicion.id)} className="flex items-center gap-2 bg-red-600 text-white px-3 py-1.5 rounded-lg hover:bg-red-700 text-sm">
+            <Trash2 size={14} /> Eliminar
+          </button>
         </div>
+
+        {showEditForm && (
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Editar Guarnición</h3>
+              <button onClick={() => { setShowEditForm(false); setEditingId(null); reset(); }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleSubmit(onSubmit)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                <input {...register("nombre")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                {errors.nombre && <p className="text-red-500 text-sm mt-1">{errors.nombre.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
+                <input {...register("descripcion")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Porciones *</label>
+                <input type="number" min="1" {...register("porciones")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                {errors.porciones && <p className="text-red-500 text-sm mt-1">{errors.porciones.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Margen %</label>
+                <input type="number" step="0.01" min="0" max="99" {...register("margen_porcentaje")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta (€)</label>
+                <input type="number" step="0.01" min="0" {...register("precio_venta")} className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+              </div>
+              <div className="md:col-span-2 flex gap-3 justify-end">
+                <button type="button" onClick={() => { setShowEditForm(false); setEditingId(null); reset(); }} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
+                <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{isSubmitting ? "Guardando..." : "Actualizar"}</button>
+              </div>
+            </form>
+          </div>
+        )}
 
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Ingredientes</h3>
@@ -183,13 +236,13 @@ export default function Guarniciones() {
           <div className="bg-white rounded-lg shadow overflow-hidden">
             <div className="bg-gray-50 border-b border-gray-200 px-4 py-3">
               <h3 className="text-lg font-semibold">Escandallo — Coste total: {coste.coste_total.toFixed(2)} € ({coste.porciones} porciones)</h3>
-              <div className="flex gap-4 mt-2 text-sm">
+              <div className="flex gap-4 mt-2 text-sm flex-wrap">
                 <span className="text-gray-600">Coste/porción: <span className="font-medium">{coste.coste_porcion.toFixed(2)} €</span></span>
                 <span className="text-gray-600">Margen: <span className="font-medium">{coste.margen_porcentaje.toFixed(1)}%</span></span>
                 {coste.precio_venta != null && (
                   <span className="text-gray-600">Precio venta: <span className="font-medium">{coste.precio_venta.toFixed(2)} €</span></span>
                 )}
-                <span className="text-blue-600 font-medium">Precio sugerido: {coste.precio_venta_sugerido.toFixed(2)} €</span>
+                <span className="text-blue-600 font-medium">Sugerido: {coste.precio_venta_sugerido.toFixed(2)} €</span>
               </div>
             </div>
             <table className="w-full">
@@ -288,7 +341,6 @@ export default function Guarniciones() {
                   <tr>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Nombre</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Descripción</th>
-                    <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -296,10 +348,6 @@ export default function Guarniciones() {
                     <tr key={g.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedGuarnicion(g)}>
                       <td className="px-4 py-3 text-sm font-medium text-gray-800">{g.nombre}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{g.descripcion ?? "-"}</td>
-                      <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
-                        <button onClick={() => handleEdit(g)} className="text-blue-600 hover:text-blue-800 mr-3"><Pencil size={16} /></button>
-                        <button onClick={() => handleDelete(g.id)} className="text-red-600 hover:text-red-800"><Trash2 size={16} /></button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>

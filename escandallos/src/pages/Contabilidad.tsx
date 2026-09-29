@@ -22,6 +22,8 @@ interface ContabilidadData {
   num_platos_vendidos: number;
   ticket_medio: number;
   desglose_por_plato: DesglosePlato[];
+  base_imponible: number;
+  total_iva: number;
 }
 
 export default function Contabilidad() {
@@ -67,10 +69,23 @@ export default function Contabilidad() {
         ) : (
           <>
             {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
               <div className="bg-white rounded-lg shadow p-4">
-                <p className="text-xs text-gray-500 mb-1">Total Ingresos</p>
+                <p className="text-xs text-gray-500 mb-1">Total Ingresos (IVA incl.)</p>
                 <p className="text-xl font-bold text-gray-800">{data.total_ingresos.toFixed(2)}€</p>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <p className="text-xs text-gray-500 mb-1">Base Imponible</p>
+                <p className="text-xl font-bold text-gray-800">{data.base_imponible.toFixed(2)}€</p>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <p className="text-xs text-gray-500 mb-1">IVA Repercutido</p>
+                <p className="text-xl font-bold text-orange-600">{data.total_iva.toFixed(2)}€</p>
+              </div>
+              <div className="bg-white rounded-lg shadow p-4">
+                <p className="text-xs text-gray-500 mb-1">Ticket Medio</p>
+                <p className="text-xl font-bold text-gray-800">{data.ticket_medio.toFixed(2)}€</p>
+                <p className="text-xs text-gray-400">{data.num_platos_vendidos} platos vendidos</p>
               </div>
               <div className="bg-white rounded-lg shadow p-4">
                 <p className="text-xs text-gray-500 mb-1">Costes COGS</p>
@@ -86,17 +101,12 @@ export default function Contabilidad() {
               <div className="bg-white rounded-lg shadow p-4">
                 <p className="text-xs text-gray-500 mb-1">Beneficio Bruto</p>
                 <p className="text-xl font-bold text-blue-600">{data.beneficio_bruto.toFixed(2)}€</p>
-                <p className="text-xs text-gray-400">= Margen Bruto (sin costes fijos)</p>
+                <p className="text-xs text-gray-400">= Margen Bruto</p>
               </div>
               <div className="bg-white rounded-lg shadow p-4">
                 <p className="text-xs text-gray-500 mb-1">Beneficio Neto</p>
                 <p className="text-xl font-bold text-blue-600">{data.beneficio_neto.toFixed(2)}€</p>
-                <p className="text-xs text-gray-400">= Beneficio Bruto (sin costes fijos)</p>
-              </div>
-              <div className="bg-white rounded-lg shadow p-4">
-                <p className="text-xs text-gray-500 mb-1">Ticket Medio</p>
-                <p className="text-xl font-bold text-gray-800">{data.ticket_medio.toFixed(2)}€</p>
-                <p className="text-xs text-gray-400">{data.num_platos_vendidos} platos vendidos</p>
+                <p className="text-xs text-gray-400">= Beneficio Bruto</p>
               </div>
             </div>
 
