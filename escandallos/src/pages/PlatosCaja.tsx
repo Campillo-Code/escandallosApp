@@ -20,12 +20,16 @@ interface PlatoCaja {
   nombre: string;
   plus: number;
   activo: boolean;
+  activo_pedido: boolean;
+  activo_encargo: boolean;
+  tipo_receta: string | null;
 }
 
 interface RecetaBasic {
   id: number;
   nombre: string;
   categoria: string | null;
+  tipo_receta?: string | null;
 }
 
 export default function PlatosCaja() {
@@ -36,10 +40,11 @@ export default function PlatosCaja() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState({ categoria_id: 0, receta_id: null as number | null, nombre: "", plus: 0, activo: true });
+  const [form, setForm] = useState({ categoria_id: 0, receta_id: null as number | null, nombre: "", plus: 0, activo: true, activo_pedido: true, activo_encargo: true });
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [tipoFilter, setTipoFilter] = useState<"todos" | "pedido" | "encargo">("todos");
 
   const loadCategorias = async () => {
     try {
@@ -57,7 +62,7 @@ export default function PlatosCaja() {
 
   const loadPlatos = async () => {
     try {
-      const data = await invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: selectedCat });
+      const data = await invoke<PlatoCaja[]>("get_platos_caja_todos", { categoriaId: selectedCat });
       setPlatos(data);
     } catch (e) { setError(String(e)); }
   };
@@ -70,13 +75,13 @@ export default function PlatosCaja() {
 
   const handleNew = () => {
     setEditingId(null);
-    setForm({ categoria_id: selectedCat || (categorias[0]?.id ?? 0), receta_id: null, nombre: "", plus: 0, activo: true });
+    setForm({ categoria_id: selectedCat || (categorias[0]?.id ?? 0), receta_id: null, nombre: "", plus: 0, activo: true, activo_pedido: true, activo_encargo: true });
     setShowForm(true);
   };
 
   const handleEdit = (plato: PlatoCaja) => {
     setEditingId(plato.id);
-    setForm({ categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, plus: plato.plus || 0, activo: plato.activo });
+    setForm({ categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, plus: plato.plus || 0, activo: plato.activo, activo_pedido: plato.activo_pedido, activo_encargo: plato.activo_encargo });
     setShowForm(true);
   };
 
@@ -101,11 +106,25 @@ export default function PlatosCaja() {
     } catch (e) { setError(String(e)); }
   };
 
-  const handleToggle = async (plato: PlatoCaja) => {
+  const handleTogglePedido = async (plato: PlatoCaja) => {
     try {
+      const nuevoPedido = !plato.activo_pedido;
+      const nuevoActivo = nuevoPedido || plato.activo_encargo;
       await invoke("update_plato_caja", {
         id: plato.id,
-        input: { categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, activo: !plato.activo }
+        input: { categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, plus: plato.plus, activo: nuevoActivo, activo_pedido: nuevoPedido, activo_encargo: plato.activo_encargo }
+      });
+      loadPlatos();
+    } catch (e) { setError(String(e)); }
+  };
+
+  const handleToggleEncargo = async (plato: PlatoCaja) => {
+    try {
+      const nuevoEncargo = !plato.activo_encargo;
+      const nuevoActivo = plato.activo_pedido || nuevoEncargo;
+      await invoke("update_plato_caja", {
+        id: plato.id,
+        input: { categoria_id: plato.categoria_id, receta_id: plato.receta_id, nombre: plato.nombre, plus: plato.plus, activo: nuevoActivo, activo_pedido: plato.activo_pedido, activo_encargo: nuevoEncargo }
       });
       loadPlatos();
     } catch (e) { setError(String(e)); }
@@ -168,18 +187,41 @@ export default function PlatosCaja() {
       <>
         <div className="p-4 pb-2 space-y-3">
           <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar plato..." />
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             <button onClick={() => setStatusFilter("all")}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${statusFilter === "all" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
               Todos ({platos.length})
             </button>
             <button onClick={() => setStatusFilter("active")}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${statusFilter === "active" ? "bg-green-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-              Activos ({platos.filter(p => p.activo).length})
+              Activos ({platos.filter(p => {
+                const tipo = p.tipo_receta ?? "pedido";
+                const ep = tipo === "encargo" ? false : p.activo_pedido;
+                const ee = tipo === "pedido" ? false : p.activo_encargo;
+                return ep || ee;
+              }).length})
             </button>
             <button onClick={() => setStatusFilter("inactive")}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${statusFilter === "inactive" ? "bg-red-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
-              Desactivados ({platos.filter(p => !p.activo).length})
+              Desactivados ({platos.filter(p => {
+                const tipo = p.tipo_receta ?? "pedido";
+                const ep = tipo === "encargo" ? false : p.activo_pedido;
+                const ee = tipo === "pedido" ? false : p.activo_encargo;
+                return !ep && !ee;
+              }).length})
+            </button>
+            <span className="border-l border-gray-300 mx-1"></span>
+            <button onClick={() => setTipoFilter("todos")}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${tipoFilter === "todos" ? "bg-slate-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              Todos
+            </button>
+            <button onClick={() => setTipoFilter("pedido")}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${tipoFilter === "pedido" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              🍽️ Pedidos
+            </button>
+            <button onClick={() => setTipoFilter("encargo")}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${tipoFilter === "encargo" ? "bg-amber-500 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+              📦 Encargos
             </button>
           </div>
         </div>
@@ -188,33 +230,64 @@ export default function PlatosCaja() {
           <thead className="bg-gray-50 border-b">
             <tr>
               <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Plato</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría Caja</th>
-              <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Plus (€)</th>
-              <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Activo</th>
+              <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Tipo</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Categoría</th>
+              <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">🍽️ Pedido</th>
+              <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">📦 Encargo</th>
               <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {platos.filter(p => {
               if (selectedCat && p.categoria_id !== selectedCat) return false;
-              if (statusFilter === "active" && !p.activo) return false;
-              if (statusFilter === "inactive" && p.activo) return false;
+              const tipo = p.tipo_receta ?? "pedido";
+              const esActivoPedido = tipo === "encargo" ? false : p.activo_pedido;
+              const esActivoEncargo = tipo === "pedido" ? false : p.activo_encargo;
+              const esDesactivado = !esActivoPedido && !esActivoEncargo;
+              if (statusFilter === "active" && esDesactivado) return false;
+              if (statusFilter === "inactive" && !esDesactivado) return false;
+              if (tipoFilter === "pedido" && tipo === "encargo") return false;
+              if (tipoFilter === "encargo" && tipo !== "encargo" && tipo !== "ambos") return false;
               return !searchTerm || p.nombre.toLowerCase().includes(searchTerm.toLowerCase());
-            }).map(plato => (
-              <tr key={plato.id} className={`hover:bg-gray-50 ${!plato.activo ? "opacity-50" : ""}`}>
+            }).map(plato => {
+              const tipo = plato.tipo_receta ?? "pedido";
+              const esActivoPedido = tipo === "encargo" ? false : plato.activo_pedido;
+              const esActivoEncargo = tipo === "pedido" ? false : plato.activo_encargo;
+              const esDesactivado = !esActivoPedido && !esActivoEncargo;
+              return (
+              <tr key={plato.id} className={`hover:bg-gray-50 ${esDesactivado ? "opacity-50" : ""}`}>
                 <td className="px-4 py-3 font-medium text-gray-800">{plato.nombre}</td>
+                <td className="px-4 py-3 text-center">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                    tipo === "encargo" ? "bg-amber-100 text-amber-700" :
+                    tipo === "ambos" ? "bg-purple-100 text-purple-700" :
+                    "bg-blue-100 text-blue-700"
+                  }`}>
+                    {tipo === "encargo" ? "📦" : tipo === "ambos" ? "🔄" : "🍽️"}
+                  </span>
+                </td>
                 <td className="px-4 py-3">
                   <span className="inline-block px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
                     {getCatName(plato.categoria_id)}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right text-sm text-gray-600">
-                  {plato.plus > 0 ? `+${plato.plus.toFixed(2)}€` : "—"}
+                <td className="px-4 py-3 text-center">
+                  {tipo === "encargo" ? (
+                    <span className="text-gray-300">—</span>
+                  ) : (
+                    <button onClick={() => handleTogglePedido(plato)} className={`w-10 h-5 rounded-full transition-colors ${plato.activo_pedido ? "bg-blue-600" : "bg-gray-300"}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${plato.activo_pedido ? "translate-x-5" : "translate-x-0.5"}`} />
+                    </button>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-center">
-                  <button onClick={() => handleToggle(plato)} className={`w-10 h-5 rounded-full transition-colors ${plato.activo ? "bg-blue-600" : "bg-gray-300"}`}>
-                    <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${plato.activo ? "translate-x-5" : "translate-x-0.5"}`} />
-                  </button>
+                  {tipo === "pedido" ? (
+                    <span className="text-gray-300">—</span>
+                  ) : (
+                    <button onClick={() => handleToggleEncargo(plato)} className={`w-10 h-5 rounded-full transition-colors ${plato.activo_encargo ? "bg-amber-500" : "bg-gray-300"}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full shadow transition-transform ${plato.activo_encargo ? "translate-x-5" : "translate-x-0.5"}`} />
+                    </button>
+                  )}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <button onClick={() => handleEdit(plato)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Editar">
@@ -225,14 +298,21 @@ export default function PlatosCaja() {
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {platos.filter(p => {
               if (selectedCat && p.categoria_id !== selectedCat) return false;
-              if (statusFilter === "active" && !p.activo) return false;
-              if (statusFilter === "inactive" && p.activo) return false;
+              const tipo = p.tipo_receta ?? "pedido";
+              const esActivoPedido = tipo === "encargo" ? false : p.activo_pedido;
+              const esActivoEncargo = tipo === "pedido" ? false : p.activo_encargo;
+              const esDesactivado = !esActivoPedido && !esActivoEncargo;
+              if (statusFilter === "active" && esDesactivado) return false;
+              if (statusFilter === "inactive" && !esDesactivado) return false;
+              if (tipoFilter === "pedido" && tipo === "encargo") return false;
+              if (tipoFilter === "encargo" && tipo !== "encargo" && tipo !== "ambos") return false;
               return !searchTerm || p.nombre.toLowerCase().includes(searchTerm.toLowerCase());
             }).length === 0 && (
-              <tr><td colSpan={4} className="px-4 py-8 text-center text-gray-400">
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">
                 {searchTerm ? "No se encontraron platos" : selectedCat ? "No hay platos en esta categoría" : "No hay platos. Añade uno con el botón de arriba."}
               </td></tr>
             )}
@@ -290,10 +370,44 @@ export default function PlatosCaja() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
                 <p className="text-xs text-gray-400 mt-1">Sobrecoste si se elige este plato en el menú</p>
               </div>
-              <div className="flex items-center gap-2">
-                <input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                <span className="text-sm font-medium text-gray-700">Activo</span>
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-700">Activar para:</p>
+                {(() => {
+                  const recetaSeleccionada = recetas.find(r => r.id === form.receta_id);
+                  const tipo = recetaSeleccionada ? (recetaSeleccionada as any).tipo_receta ?? "pedido" : null;
+                  if (tipo === "pedido") {
+                    return (
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.activo_pedido} onChange={(e) => setForm({ ...form, activo_pedido: e.target.checked, activo_encargo: false })}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                        <span className="text-sm text-gray-700">🍽️ Pedidos (carta)</span>
+                      </div>
+                    );
+                  }
+                  if (tipo === "encargo") {
+                    return (
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.activo_encargo} onChange={(e) => setForm({ ...form, activo_encargo: e.target.checked, activo_pedido: false })}
+                          className="rounded border-gray-300 text-amber-500 focus:ring-amber-500" />
+                        <span className="text-sm text-gray-700">📦 Encargos</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.activo_pedido} onChange={(e) => setForm({ ...form, activo_pedido: e.target.checked })}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                        <span className="text-sm text-gray-700">🍽️ Pedidos (carta)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.activo_encargo} onChange={(e) => setForm({ ...form, activo_encargo: e.target.checked })}
+                          className="rounded border-gray-300 text-amber-500 focus:ring-amber-500" />
+                        <span className="text-sm text-gray-700">📦 Encargos</span>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
             <div className="flex gap-3 justify-end px-6 py-4 border-t bg-gray-50 rounded-b-xl">

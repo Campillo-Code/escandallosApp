@@ -21,9 +21,11 @@ const recetaSchema = z.object({
   tiempo_preparacion: z.string().optional(),
   es_base: z.boolean(),
   precio_venta: z.string().optional(),
+  precio_venta_entero: z.string().optional(),
   margen_porcentaje: z.string().optional(),
   peso_por_racion: z.string().optional(),
   iva_porcentaje: z.string().optional(),
+  tipo_receta: z.string().optional(),
 });
 
 type RecetaFormData = z.infer<typeof recetaSchema>;
@@ -41,9 +43,11 @@ interface Receta {
   tiempo_preparacion: number | null;
   es_base: boolean;
   precio_venta: number | null;
+  precio_venta_entero: number | null;
   margen_porcentaje: number | null;
   peso_por_racion: number | null;
   iva_porcentaje: number | null;
+  tipo_receta: string | null;
 }
 
 interface RecetaIngrediente {
@@ -80,6 +84,7 @@ interface CosteReceta {
   precio_venta_sugerido: number;
   ingredientes: CosteIngrediente[];
   iva_porcentaje: number;
+  precio_venta_entero: number | null;
   base_imponible: number | null;
   cuota_iva: number | null;
 }
@@ -407,9 +412,11 @@ export default function Recetas() {
         tiempo_preparacion: data.tiempo_preparacion ? parseInt(data.tiempo_preparacion) : null,
         es_base: data.es_base,
         precio_venta: data.precio_venta ? parseFloat(data.precio_venta) : null,
+        precio_venta_entero: data.precio_venta_entero ? parseFloat(data.precio_venta_entero) : null,
         margen_porcentaje: data.margen_porcentaje ? parseFloat(data.margen_porcentaje) : null,
         peso_por_racion: data.peso_por_racion ? parseFloat(data.peso_por_racion) : null,
         iva_porcentaje: data.iva_porcentaje ? parseFloat(data.iva_porcentaje) : 10.0,
+        tipo_receta: data.tipo_receta || "pedido",
       };
       if (editingId) {
         await invoke("update_receta", { id: editingId, input });
@@ -479,9 +486,11 @@ export default function Recetas() {
       tiempo_preparacion: r.tiempo_preparacion != null ? String(r.tiempo_preparacion) : "",
       es_base: r.es_base,
       precio_venta: r.precio_venta != null ? String(r.precio_venta) : "",
+      precio_venta_entero: r.precio_venta_entero != null ? String(r.precio_venta_entero) : "",
       margen_porcentaje: r.margen_porcentaje != null ? String(r.margen_porcentaje) : "",
       peso_por_racion: r.peso_por_racion != null ? String(r.peso_por_racion) : "",
       iva_porcentaje: r.iva_porcentaje != null ? String(r.iva_porcentaje) : "10",
+      tipo_receta: r.tipo_receta ?? "pedido",
     });
     setShowForm(true);
   };
@@ -617,7 +626,7 @@ export default function Recetas() {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta actual por porción (€)</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta por porción (€)</label>
               <input
                 type="number"
                 step="0.01"
@@ -626,6 +635,18 @@ export default function Recetas() {
                 placeholder="0.00"
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Precio venta producto entero (€)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                {...register("precio_venta_entero")}
+                placeholder="Solo para encargos"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-400 mt-1">Precio del producto completo (ej: tarta entera)</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Margen objetivo mínimo (%)</label>
@@ -659,6 +680,17 @@ export default function Recetas() {
                 <option value="10">10% — Comida / Bebida no alcohólica</option>
                 <option value="21">21% — Bebida alcohólica / General</option>
                 <option value="4">4% — Productos básicos</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <select
+                {...register("tipo_receta")}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="pedido">Pedido (carta)</option>
+                <option value="encargo">Encargo (especial)</option>
+                <option value="ambos">Ambos</option>
               </select>
             </div>
             <div>
@@ -1090,6 +1122,53 @@ export default function Recetas() {
                     <p className="text-lg font-bold text-blue-700">{costeReceta.precio_venta.toFixed(2)} €</p>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {(selectedReceta?.tipo_receta === "encargo" || selectedReceta?.tipo_receta === "ambos") && (
+              <div className="bg-white rounded-lg shadow p-4 mb-4 border-2 border-amber-200">
+                <p className="text-sm font-semibold text-amber-800 mb-2">📦 Producto entero (para encargos)</p>
+                {(() => {
+                  const margen = costeReceta.margen_porcentaje ?? 50;
+                  const iva = costeReceta.iva_porcentaje;
+                  const baseSugerida = margen < 100 && margen > 0 ? costeReceta.coste_total / (1 - margen / 100) : costeReceta.coste_total * 2;
+                  const precioSugerido = baseSugerida * (1 + iva / 100);
+                  const precioEntero = costeReceta.precio_venta_entero;
+                  const margenEntero = precioEntero != null && precioEntero > 0
+                    ? ((precioEntero - costeReceta.coste_total) / precioEntero) * 100
+                    : null;
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                      <div className="bg-amber-50 rounded-lg p-2">
+                        <p className="text-xs text-gray-500">Coste total</p>
+                        <p className="text-lg font-bold text-gray-800">{costeReceta.coste_total.toFixed(2)} €</p>
+                      </div>
+                      <div className="bg-amber-50 rounded-lg p-2">
+                        <p className="text-xs text-gray-500">Porciones</p>
+                        <p className="text-lg font-bold text-gray-800">{selectedReceta?.porciones ?? "—"}</p>
+                      </div>
+                      <div className="bg-amber-50 rounded-lg p-2">
+                        <p className="text-xs text-gray-500">Precio venta entero</p>
+                        {precioEntero != null ? (
+                          <p className="text-lg font-bold text-amber-700">{precioEntero.toFixed(2)} €</p>
+                        ) : (
+                          <>
+                            <p className="text-lg font-bold text-blue-600">{precioSugerido.toFixed(2)} €</p>
+                            <p className="text-[10px] text-gray-400">sugerido (margen {margen}%)</p>
+                          </>
+                        )}
+                      </div>
+                      <div className="bg-amber-50 rounded-lg p-2">
+                        <p className="text-xs text-gray-500">Margen entero</p>
+                        {margenEntero != null ? (
+                          <p className="text-lg font-bold text-gray-800">{margenEntero.toFixed(1)}%</p>
+                        ) : (
+                          <p className="text-lg font-bold text-blue-600">{margen}%</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 

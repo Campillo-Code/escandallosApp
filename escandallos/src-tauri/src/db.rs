@@ -252,6 +252,43 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE recetas ADD iva_porcentaje completed");
     }
 
+    // RECETAS: Add tipo_receta if not exists
+    let check_tipo_receta: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recetas' AND COLUMN_NAME = 'tipo_receta'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_tipo_receta.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN tipo_receta VARCHAR(20) NOT NULL DEFAULT 'pedido' AFTER iva_porcentaje").execute(pool).await;
+        println!("ALTER TABLE recetas ADD tipo_receta completed");
+    }
+
+    // RECETAS: Add precio_venta_entero if not exists
+    let check_precio_entero: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'recetas' AND COLUMN_NAME = 'precio_venta_entero'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_precio_entero.is_none() {
+        let _ = sqlx::query("ALTER TABLE recetas ADD COLUMN precio_venta_entero DECIMAL(10,2) NULL AFTER precio_venta").execute(pool).await;
+        println!("ALTER TABLE recetas ADD precio_venta_entero completed");
+    }
+
+    // CAJA_TICKETS: Add tipo if not exists
+    let check_tipo_ticket: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_tickets' AND COLUMN_NAME = 'tipo'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_tipo_ticket.is_none() {
+        let _ = sqlx::query("ALTER TABLE caja_tickets ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'pedido' AFTER metodo_pago").execute(pool).await;
+        println!("ALTER TABLE caja_tickets ADD tipo completed");
+    }
+
+    // CAJA_PLATOS: Add activo_pedido and activo_encargo if not exists
+    let check_activo_pedido: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_platos' AND COLUMN_NAME = 'activo_pedido'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_activo_pedido.is_none() {
+        let _ = sqlx::query("ALTER TABLE caja_platos ADD COLUMN activo_pedido BOOLEAN DEFAULT TRUE AFTER activo").execute(pool).await;
+        let _ = sqlx::query("ALTER TABLE caja_platos ADD COLUMN activo_encargo BOOLEAN DEFAULT TRUE AFTER activo_pedido").execute(pool).await;
+        println!("ALTER TABLE caja_platos ADD activo_pedido/activo_encargo completed");
+    }
+
 
 
     // MENU DEL DIA: Create table

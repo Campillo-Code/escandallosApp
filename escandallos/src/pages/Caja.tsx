@@ -17,8 +17,12 @@ interface PlatoCaja {
   nombre: string;
   plus: number;
   activo: boolean;
+  activo_pedido: boolean;
+  activo_encargo: boolean;
   foto: string | null;
   iva_porcentaje: number;
+  precio_venta_entero: number | null;
+  tipo_receta: string | null;
 }
 
 interface TicketItem {
@@ -38,6 +42,7 @@ interface CajaTicket {
   items: string;
   notas: string | null;
   metodo_pago: string | null;
+  tipo: string | null;
 }
 
 interface CajaResumen {
@@ -65,6 +70,7 @@ export default function Caja() {
   const [showHistory, setShowHistory] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [showDatáfonoModal, setShowDatáfonoModal] = useState(false);
+  const [ticketOrigen, setTicketOrigen] = useState<string>("pedido");
   const [error, setError] = useState("");
 
   const getLocalDate = () => {
@@ -121,6 +127,7 @@ export default function Caja() {
         const pedido = JSON.parse(pedidoCobrar);
         setTicket(pedido.items);
         setNotas(pedido.notas || "");
+        if (pedido.tipo) setTicketOrigen(pedido.tipo);
         localStorage.removeItem("pedido_cobrar");
       } catch (e) { console.error(e); }
     }
@@ -129,14 +136,14 @@ export default function Caja() {
   const loadPlatos = async (catId: number) => {
     try {
       const data = await invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: catId });
-      setPlatos(data);
+      setPlatos(data.filter(p => p.activo_pedido));
     } catch (e) { console.error(e); }
   };
 
   const loadAllPlatos = async () => {
     try {
       const data = await invoke<PlatoCaja[]>("get_platos_caja", { categoriaId: null });
-      setPlatos(data.filter(p => p.activo));
+      setPlatos(data.filter(p => p.activo && p.activo_pedido));
     } catch (e) { console.error(e); }
   };
 
@@ -234,14 +241,15 @@ export default function Caja() {
       return;
     }
     try {
-      console.log("[Caja] Cobrando:", { items: ticket, total: totalTicket, notas, metodoPago });
+      console.log("[Caja] Cobrando:", { items: ticket, total: totalTicket, notas, metodoPago, tipo: ticketOrigen });
       await invoke("create_caja_ticket", {
-        input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: metodoPago }
+        input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: metodoPago, tipo: ticketOrigen }
       });
       console.log("[Caja] Ticket creado OK");
       setTicket([]);
       setNotas("");
       setMetodoPago("efectivo");
+      setTicketOrigen("pedido");
       await loadResumen();
       await loadTicketsHoy();
     } catch (e) { console.error("[Caja] Error cobrando:", e); setError(String(e)); }
@@ -249,14 +257,15 @@ export default function Caja() {
 
   const confirmarDatáfono = async () => {
     try {
-      console.log("[Caja] Confirmando datáfono:", { items: ticket, total: totalTicket, notas });
+      console.log("[Caja] Confirmando datáfono:", { items: ticket, total: totalTicket, notas, tipo: ticketOrigen });
       await invoke("create_caja_ticket", {
-        input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: "tarjeta" }
+        input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: "tarjeta", tipo: ticketOrigen }
       });
       console.log("[Caja] Ticket datáfono creado OK");
       setTicket([]);
       setNotas("");
       setMetodoPago("efectivo");
+      setTicketOrigen("pedido");
       setShowDatáfonoModal(false);
       await loadResumen();
       await loadTicketsHoy();
@@ -686,6 +695,9 @@ export default function Caja() {
                           <div>
                             <span className="text-sm text-gray-500">{ticket.hora}</span>
                             <span className="ml-2 font-bold text-lg">{ticket.total.toFixed(2)} €</span>
+                            {ticket.tipo === "encargo" && (
+                              <span className="ml-2 inline-block px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">📦 Encargo</span>
+                            )}
                             {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
                               <span className={`ml-2 inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
                                 ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :

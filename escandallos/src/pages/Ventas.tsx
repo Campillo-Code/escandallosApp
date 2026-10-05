@@ -27,6 +27,7 @@ interface CajaTicket {
   items: string;
   notas: string | null;
   metodo_pago: string | null;
+  tipo: string | null;
 }
 
 function getLocalDateStr(d: Date): string {
@@ -143,6 +144,7 @@ export default function Ventas() {
             return {
               Fecha: t.fecha,
               Hora: t.hora,
+              Tipo: t.tipo || "pedido",
               Categoria: item.categoria,
               Plato: item.descripcion,
               Cantidad: item.cantidad,
@@ -304,6 +306,9 @@ export default function Ventas() {
                             {items.map(i => i.descripcion).join(", ").substring(0, 60)}{items.map(i => i.descripcion).join(", ").length > 60 ? "..." : ""}
                           </span>
                         </span>
+                        {ticket.tipo === "encargo" && (
+                          <span className="inline-block px-1.5 py-0.5 rounded text-xs font-medium shrink-0 bg-amber-100 text-amber-700">📦</span>
+                        )}
                         {ticket.metodo_pago && ticket.metodo_pago !== "efectivo" && (
                           <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
                             ticket.metodo_pago === "tarjeta" ? "bg-purple-100 text-purple-700" :

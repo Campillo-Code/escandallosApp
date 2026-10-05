@@ -63,9 +63,11 @@ pub struct Receta {
     pub tiempo_preparacion: Option<i32>,
     pub es_base: bool,
     pub precio_venta: Option<f64>,
+    pub precio_venta_entero: Option<f64>,
     pub margen_porcentaje: Option<f64>,
     pub peso_por_racion: Option<f64>,
     pub iva_porcentaje: Option<f64>,
+    pub tipo_receta: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,9 +83,11 @@ pub struct RecetaInput {
     pub tiempo_preparacion: Option<i32>,
     pub es_base: Option<bool>,
     pub precio_venta: Option<f64>,
+    pub precio_venta_entero: Option<f64>,
     pub margen_porcentaje: Option<f64>,
     pub peso_por_racion: Option<f64>,
     pub iva_porcentaje: Option<f64>,
+    pub tipo_receta: Option<String>,
 }
 
 // ========================================
@@ -261,7 +265,7 @@ async fn delete_ingrediente(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_recetas() -> Result<Vec<Receta>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion, CAST(iva_porcentaje AS DOUBLE) AS iva_porcentaje FROM recetas ORDER BY nombre";
+    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(precio_venta_entero AS DOUBLE) AS precio_venta_entero, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion, CAST(iva_porcentaje AS DOUBLE) AS iva_porcentaje, tipo_receta FROM recetas ORDER BY nombre";
     let rows = sqlx::query(sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<Receta> = rows.iter().map(|r| {
         Receta {
@@ -277,9 +281,11 @@ async fn get_recetas() -> Result<Vec<Receta>, String> {
             tiempo_preparacion: r.try_get("tiempo_preparacion").ok().flatten(),
             es_base: r.try_get("es_base").unwrap_or_default(),
             precio_venta: r.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
+            precio_venta_entero: r.try_get::<Option<f64>, _>("precio_venta_entero").ok().flatten(),
             margen_porcentaje: r.try_get::<Option<f64>, _>("margen_porcentaje").ok().flatten(),
             peso_por_racion: r.try_get::<Option<f64>, _>("peso_por_racion").ok().flatten(),
             iva_porcentaje: r.try_get::<Option<f64>, _>("iva_porcentaje").ok().flatten(),
+            tipo_receta: r.try_get("tipo_receta").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -289,7 +295,7 @@ async fn get_recetas() -> Result<Vec<Receta>, String> {
 async fn create_receta(input: RecetaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO recetas (nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, precio_venta, margen_porcentaje, peso_por_racion, iva_porcentaje) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO recetas (nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, precio_venta, precio_venta_entero, margen_porcentaje, peso_por_racion, iva_porcentaje, tipo_receta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&input.nombre)
     .bind(&input.descripcion)
@@ -302,9 +308,11 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
     .bind(input.tiempo_preparacion)
     .bind(input.es_base.unwrap_or(false))
     .bind(input.precio_venta)
+    .bind(input.precio_venta_entero)
     .bind(input.margen_porcentaje)
     .bind(input.peso_por_racion)
     .bind(input.iva_porcentaje.unwrap_or(10.0))
+    .bind(input.tipo_receta.as_deref().unwrap_or("pedido"))
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -315,7 +323,7 @@ async fn create_receta(input: RecetaInput) -> Result<i64, String> {
 async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE recetas SET nombre = ?, descripcion = ?, elaboracion = ?, conservacion = ?, regeneracion = ?, vida_util = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, margen_porcentaje = ?, peso_por_racion = ?, iva_porcentaje = ? WHERE id = ?"
+        "UPDATE recetas SET nombre = ?, descripcion = ?, elaboracion = ?, conservacion = ?, regeneracion = ?, vida_util = ?, categoria = ?, porciones = ?, tiempo_preparacion = ?, es_base = ?, precio_venta = ?, precio_venta_entero = ?, margen_porcentaje = ?, peso_por_racion = ?, iva_porcentaje = ?, tipo_receta = ? WHERE id = ?"
     )
     .bind(&input.nombre)
     .bind(&input.descripcion)
@@ -328,9 +336,11 @@ async fn update_receta(id: i64, input: RecetaInput) -> Result<(), String> {
     .bind(input.tiempo_preparacion)
     .bind(input.es_base.unwrap_or(false))
     .bind(input.precio_venta)
+    .bind(input.precio_venta_entero)
     .bind(input.margen_porcentaje)
     .bind(input.peso_por_racion)
     .bind(input.iva_porcentaje.unwrap_or(10.0))
+    .bind(input.tipo_receta.as_deref().unwrap_or("pedido"))
     .bind(id)
     .execute(pool)
     .await
@@ -493,7 +503,7 @@ async fn delete_receta_ingrediente(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_recetas_base() -> Result<Vec<Receta>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion, CAST(iva_porcentaje AS DOUBLE) AS iva_porcentaje FROM recetas WHERE es_base = 1 ORDER BY nombre";
+    let sql = "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(precio_venta_entero AS DOUBLE) AS precio_venta_entero, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion, CAST(iva_porcentaje AS DOUBLE) AS iva_porcentaje, tipo_receta FROM recetas WHERE es_base = 1 ORDER BY nombre";
     let rows = sqlx::query(sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<Receta> = rows.iter().map(|r| {
         Receta {
@@ -509,9 +519,11 @@ async fn get_recetas_base() -> Result<Vec<Receta>, String> {
             tiempo_preparacion: r.try_get("tiempo_preparacion").ok().flatten(),
             es_base: r.try_get("es_base").unwrap_or_default(),
             precio_venta: r.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
+            precio_venta_entero: r.try_get::<Option<f64>, _>("precio_venta_entero").ok().flatten(),
             margen_porcentaje: r.try_get::<Option<f64>, _>("margen_porcentaje").ok().flatten(),
             peso_por_racion: r.try_get::<Option<f64>, _>("peso_por_racion").ok().flatten(),
             iva_porcentaje: r.try_get::<Option<f64>, _>("iva_porcentaje").ok().flatten(),
+            tipo_receta: r.try_get("tipo_receta").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -574,6 +586,7 @@ pub struct CosteReceta {
     pub precio_venta_sugerido: f64,
     pub ingredientes: Vec<CosteIngrediente>,
     pub iva_porcentaje: f64,
+    pub precio_venta_entero: Option<f64>,
     pub base_imponible: Option<f64>,
     pub cuota_iva: Option<f64>,
 }
@@ -583,7 +596,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
     let pool = &db::get_pool();
 
     let receta = sqlx::query(
-        "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion, CAST(iva_porcentaje AS DOUBLE) AS iva_porcentaje FROM recetas WHERE id = ?"
+        "SELECT id, nombre, descripcion, elaboracion, conservacion, regeneracion, vida_util, categoria, porciones, tiempo_preparacion, es_base, CAST(precio_venta AS DOUBLE) AS precio_venta, CAST(precio_venta_entero AS DOUBLE) AS precio_venta_entero, CAST(margen_porcentaje AS DOUBLE) AS margen_porcentaje, CAST(peso_por_racion AS DOUBLE) AS peso_por_racion, CAST(iva_porcentaje AS DOUBLE) AS iva_porcentaje, tipo_receta FROM recetas WHERE id = ?"
     )
     .bind(receta_id)
     .fetch_optional(pool)
@@ -604,9 +617,11 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
         tiempo_preparacion: receta.try_get("tiempo_preparacion").ok().flatten(),
         es_base: receta.try_get("es_base").unwrap_or_default(),
         precio_venta: receta.try_get::<Option<f64>, _>("precio_venta").ok().flatten(),
+        precio_venta_entero: receta.try_get::<Option<f64>, _>("precio_venta_entero").ok().flatten(),
         margen_porcentaje: receta.try_get::<Option<f64>, _>("margen_porcentaje").ok().flatten(),
         peso_por_racion: receta.try_get::<Option<f64>, _>("peso_por_racion").ok().flatten(),
         iva_porcentaje: receta.try_get::<Option<f64>, _>("iva_porcentaje").ok().flatten(),
+        tipo_receta: receta.try_get("tipo_receta").ok().flatten(),
     };
 
     // Fetch ALL receta_ingredientes (regular ingredients + sub-recipes)
@@ -764,6 +779,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
         precio_venta_sugerido,
         ingredientes,
         iva_porcentaje: iva,
+        precio_venta_entero: receta.precio_venta_entero,
         base_imponible,
         cuota_iva,
     })
@@ -1988,11 +2004,11 @@ pub struct MenuEngineeringItem {
 async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<MenuEngineeringItem>, String> {
     let pool = &db::get_pool();
 
-    // Get sales per dish
+    // Get sales per dish - solo tipo 'pedido' (sin encargos)
     let sql = if let (Some(_), Some(_)) = (&fecha_desde, &fecha_hasta) {
-        "SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas WHERE fecha BETWEEN ? AND ? GROUP BY plato_nombre"
+        "SELECT v.plato_nombre, CAST(SUM(v.cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(v.total_venta) AS DOUBLE) AS total_ingresos FROM ventas v LEFT JOIN caja_tickets t ON v.ticket_id = t.id WHERE v.fecha BETWEEN ? AND ? AND (t.tipo = 'pedido' OR t.tipo IS NULL) GROUP BY v.plato_nombre"
     } else {
-        "SELECT plato_nombre, CAST(SUM(cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(total_venta) AS DOUBLE) AS total_ingresos FROM ventas GROUP BY plato_nombre"
+        "SELECT v.plato_nombre, CAST(SUM(v.cantidad) AS SIGNED) AS unidades_vendidas, CAST(SUM(v.total_venta) AS DOUBLE) AS total_ingresos FROM ventas v LEFT JOIN caja_tickets t ON v.ticket_id = t.id WHERE t.tipo = 'pedido' OR t.tipo IS NULL GROUP BY v.plato_nombre"
     };
     let mut q = sqlx::query(sql);
     if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
@@ -2766,8 +2782,12 @@ pub struct PlatoCaja {
     pub nombre: String,
     pub plus: f64,
     pub activo: bool,
+    pub activo_pedido: bool,
+    pub activo_encargo: bool,
     pub foto: Option<String>,
     pub iva_porcentaje: f64,
+    pub precio_venta_entero: Option<f64>,
+    pub tipo_receta: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2777,6 +2797,8 @@ pub struct PlatoCajaInput {
     pub nombre: String,
     pub plus: Option<f64>,
     pub activo: Option<bool>,
+    pub activo_pedido: Option<bool>,
+    pub activo_encargo: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2798,6 +2820,7 @@ pub struct CajaTicket {
     pub items: String,
     pub notas: Option<String>,
     pub metodo_pago: Option<String>,
+    pub tipo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2806,6 +2829,7 @@ pub struct CajaTicketInput {
     pub total: f64,
     pub notas: Option<String>,
     pub metodo_pago: Option<String>,
+    pub tipo: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2881,9 +2905,9 @@ async fn delete_categoria_caja(id: i64) -> Result<(), String> {
 async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<CajaTicket>, String> {
     let pool = &db::get_pool();
     let sql = if let (Some(_), Some(_)) = (&fecha_desde, &fecha_hasta) {
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago, tipo FROM caja_tickets WHERE fecha BETWEEN ? AND ? ORDER BY fecha DESC, hora DESC"
     } else {
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets ORDER BY fecha DESC, hora DESC"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago, tipo FROM caja_tickets ORDER BY fecha DESC, hora DESC"
     };
     let mut q = sqlx::query(sql);
     if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
@@ -2899,6 +2923,7 @@ async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<Strin
             items: r.try_get("items").unwrap_or_default(),
             notas: r.try_get("notas").ok().flatten(),
             metodo_pago: r.try_get("metodo_pago").ok().flatten(),
+            tipo: r.try_get("tipo").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -2908,9 +2933,9 @@ async fn get_caja_tickets(fecha_desde: Option<String>, fecha_hasta: Option<Strin
 async fn get_caja_tickets_con_ventas(fecha_desde: Option<String>, fecha_hasta: Option<String>) -> Result<Vec<CajaTicket>, String> {
     let pool = &db::get_pool();
     let sql = if let (Some(_), Some(_)) = (&fecha_desde, &fecha_hasta) {
-        "SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t WHERE t.fecha BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) ORDER BY fecha DESC, hora DESC"
+        "SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago, t.tipo FROM caja_tickets t WHERE t.fecha BETWEEN ? AND ? AND EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) ORDER BY fecha DESC, hora DESC"
     } else {
-        "SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago FROM caja_tickets t WHERE EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) ORDER BY fecha DESC, hora DESC"
+        "SELECT t.id, DATE_FORMAT(t.fecha, '%Y-%m-%d') AS fecha, CAST(t.hora AS CHAR) AS hora, CAST(t.total AS DOUBLE) AS total, CAST(t.items AS CHAR) AS items, t.notas, t.metodo_pago, t.tipo FROM caja_tickets t WHERE EXISTS (SELECT 1 FROM ventas v WHERE v.ticket_id = t.id) ORDER BY fecha DESC, hora DESC"
     };
     let mut q = sqlx::query(sql);
     if let (Some(desde), Some(hasta)) = (&fecha_desde, &fecha_hasta) {
@@ -2926,6 +2951,7 @@ async fn get_caja_tickets_con_ventas(fecha_desde: Option<String>, fecha_hasta: O
             items: r.try_get("items").unwrap_or_default(),
             notas: r.try_get("notas").ok().flatten(),
             metodo_pago: r.try_get("metodo_pago").ok().flatten(),
+            tipo: r.try_get("tipo").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -2940,10 +2966,10 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
     let items_json = serde_json::to_string(&input.items).map_err(|e| e.to_string())?;
 
     let result = sqlx::query(
-        "INSERT INTO caja_tickets (fecha, hora, total, items, notas, metodo_pago) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO caja_tickets (fecha, hora, total, items, notas, metodo_pago, tipo) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(&fecha).bind(&hora).bind(input.total)
-    .bind(&items_json).bind(&input.notas).bind(input.metodo_pago.as_deref().unwrap_or("efectivo"))
+    .bind(&items_json).bind(&input.notas).bind(input.metodo_pago.as_deref().unwrap_or("efectivo")).bind(input.tipo.as_deref().unwrap_or("pedido"))
     .execute(pool).await.map_err(|e| e.to_string())?;
     let ticket_id = result.last_insert_id() as i64;
 
@@ -2967,7 +2993,7 @@ async fn delete_caja_ticket(id: i64) -> Result<(), String> {
     sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
         .bind(id).execute(pool).await.map_err(|e| e.to_string())?;
     // Also delete any orphaned ventas from old tickets (no ticket_id) by matching
-    let sql = "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago FROM caja_tickets WHERE id = ?";
+    let sql = "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago, tipo FROM caja_tickets WHERE id = ?";
     let ticket: Option<CajaTicket> = sqlx::query(sql).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?.map(|r| {
         CajaTicket {
             id: r.try_get("id").unwrap_or_default(),
@@ -2977,6 +3003,7 @@ async fn delete_caja_ticket(id: i64) -> Result<(), String> {
             items: r.try_get("items").unwrap_or_default(),
             notas: r.try_get("notas").ok().flatten(),
             metodo_pago: r.try_get("metodo_pago").ok().flatten(),
+            tipo: r.try_get("tipo").ok().flatten(),
         }
     });
     if let Some(t) = ticket {
@@ -3037,13 +3064,14 @@ pub struct RecetaBasic {
     pub id: i64,
     pub nombre: String,
     pub categoria: Option<String>,
+    pub tipo_receta: Option<String>,
 }
 
 #[tauri::command]
 async fn get_recetas_basic() -> Result<Vec<RecetaBasic>, String> {
     let pool = &db::get_pool();
     let rows: Vec<RecetaBasic> = sqlx::query_as(
-        "SELECT id, nombre, categoria FROM recetas ORDER BY categoria, nombre"
+        "SELECT id, nombre, categoria, tipo_receta FROM recetas ORDER BY categoria, nombre"
     ).fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
@@ -3055,7 +3083,7 @@ async fn get_recetas_basic() -> Result<Vec<RecetaBasic>, String> {
 #[tauri::command]
 async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, String> {
     let pool = &db::get_pool();
-    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, CAST(cp.plus AS DOUBLE) AS plus, cp.activo, CAST(fr.fotos AS CHAR) AS foto, COALESCE(CAST(r.iva_porcentaje AS DOUBLE), 10.0) AS iva_porcentaje FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id LEFT JOIN recetas r ON cp.receta_id = r.id";
+    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, CAST(cp.plus AS DOUBLE) AS plus, cp.activo, COALESCE(cp.activo_pedido, TRUE) AS activo_pedido, COALESCE(cp.activo_encargo, TRUE) AS activo_encargo, CAST(fr.fotos AS CHAR) AS foto, COALESCE(CAST(r.iva_porcentaje AS DOUBLE), 10.0) AS iva_porcentaje, CAST(r.precio_venta_entero AS DOUBLE) AS precio_venta_entero, COALESCE(r.tipo_receta, 'pedido') AS tipo_receta FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id LEFT JOIN recetas r ON cp.receta_id = r.id";
     let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
         sqlx::query_as(
             &format!("{} WHERE cp.categoria_id = ? AND cp.activo = 1 ORDER BY cp.nombre", base_sql)
@@ -3069,12 +3097,28 @@ async fn get_platos_caja(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, St
 }
 
 #[tauri::command]
+async fn get_platos_caja_todos(categoria_id: Option<i64>) -> Result<Vec<PlatoCaja>, String> {
+    let pool = &db::get_pool();
+    let base_sql = "SELECT cp.id, cp.categoria_id, cp.receta_id, cp.nombre, CAST(cp.plus AS DOUBLE) AS plus, cp.activo, COALESCE(cp.activo_pedido, TRUE) AS activo_pedido, COALESCE(cp.activo_encargo, TRUE) AS activo_encargo, CAST(fr.fotos AS CHAR) AS foto, COALESCE(CAST(r.iva_porcentaje AS DOUBLE), 10.0) AS iva_porcentaje, CAST(r.precio_venta_entero AS DOUBLE) AS precio_venta_entero, COALESCE(r.tipo_receta, 'pedido') AS tipo_receta FROM caja_platos cp LEFT JOIN fichas_receta fr ON cp.receta_id = fr.receta_id LEFT JOIN recetas r ON cp.receta_id = r.id";
+    let rows: Vec<PlatoCaja> = if let Some(cat_id) = categoria_id {
+        sqlx::query_as(
+            &format!("{} WHERE cp.categoria_id = ? ORDER BY cp.activo DESC, cp.nombre", base_sql)
+        ).bind(cat_id).fetch_all(pool).await.map_err(|e| e.to_string())?
+    } else {
+        sqlx::query_as(
+            &format!("{} ORDER BY cp.activo DESC, cp.categoria_id, cp.nombre", base_sql)
+        ).fetch_all(pool).await.map_err(|e| e.to_string())?
+    };
+    Ok(rows)
+}
+
+#[tauri::command]
 async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO caja_platos (categoria_id, receta_id, nombre, plus, activo) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO caja_platos (categoria_id, receta_id, nombre, plus, activo, activo_pedido, activo_encargo) VALUES (?, ?, ?, ?, ?, ?, ?)"
     )
-    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.plus.unwrap_or(0.0)).bind(input.activo.unwrap_or(true))
+    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.plus.unwrap_or(0.0)).bind(input.activo.unwrap_or(true)).bind(input.activo_pedido.unwrap_or(true)).bind(input.activo_encargo.unwrap_or(true))
     .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(result.last_insert_id() as i64)
 }
@@ -3083,9 +3127,9 @@ async fn create_plato_caja(input: PlatoCajaInput) -> Result<i64, String> {
 async fn update_plato_caja(id: i64, input: PlatoCajaInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE caja_platos SET categoria_id = ?, receta_id = ?, nombre = ?, plus = ?, activo = ? WHERE id = ?"
+        "UPDATE caja_platos SET categoria_id = ?, receta_id = ?, nombre = ?, plus = ?, activo = ?, activo_pedido = ?, activo_encargo = ? WHERE id = ?"
     )
-    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.plus.unwrap_or(0.0)).bind(input.activo.unwrap_or(true))
+    .bind(input.categoria_id).bind(input.receta_id).bind(&input.nombre).bind(input.plus.unwrap_or(0.0)).bind(input.activo.unwrap_or(true)).bind(input.activo_pedido.unwrap_or(true)).bind(input.activo_encargo.unwrap_or(true))
     .bind(id)
     .execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
@@ -3710,6 +3754,7 @@ pub fn run() {
             delete_caja_ticket,
             get_caja_resumen,
             get_platos_caja,
+            get_platos_caja_todos,
             create_plato_caja,
             update_plato_caja,
             delete_plato_caja,

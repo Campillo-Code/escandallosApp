@@ -40,6 +40,8 @@ interface PlatoCaja {
   nombre: string;
   plus: number;
   activo: boolean;
+  precio_venta_entero: number | null;
+  tipo_receta: string | null;
 }
 
 export default function Pedidos() {
@@ -153,6 +155,7 @@ export default function Pedidos() {
         items,
         total: pedido.total,
         notas: pedido.notas,
+        tipo: pedido.tipo || "pedido",
       }));
       window.location.href = "/caja";
     } catch (e) { alert("Error: " + e); }
@@ -183,7 +186,11 @@ export default function Pedidos() {
     const plato = platos.find(p => p.id === platoId);
     if (!plato) return;
     const cat = categorias.find(c => c.id === plato.categoria_id);
-    const precio = (cat?.precio || 0) + (plato.plus || 0);
+    let precio = (cat?.precio || 0) + (plato.plus || 0);
+    // Si es encargo y la receta tiene precio_venta_entero, usar ese precio
+    if (formTipo === 'encargo' && plato.precio_venta_entero) {
+      precio = plato.precio_venta_entero;
+    }
     setFormItems(prev => [...prev, { categoria: cat?.nombre || "", descripcion: plato.nombre, cantidad: 1, precio_unitario: precio, subtotal: precio }]);
   };
 
