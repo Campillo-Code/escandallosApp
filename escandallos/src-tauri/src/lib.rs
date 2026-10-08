@@ -3319,11 +3319,17 @@ async fn get_whatsapp_messages(telefono: String) -> Result<Vec<WhatsappMessage>,
 
 #[tauri::command]
 async fn send_whatsapp_message_manual(telefono: String, mensaje: String) -> Result<(), String> {
-    let pool = &db::get_pool();
-    // Guardar en BBDD
-    sqlx::query("INSERT INTO whatsapp_messages (telefono, mensaje, direccion) VALUES (?, ?, 'manual_out')")
-        .bind(&telefono).bind(&mensaje)
-        .execute(pool).await.map_err(|e| e.to_string())?;
+    // Enviar al bot en el VPS para que lo envíe por Twilio
+    let client = reqwest::Client::new();
+    let bot_url = std::env::var("BOT_URL").unwrap_or_else(|_| "http://212.227.39.147:3000".to_string());
+    let resp = client.post(format!("{}/send", bot_url))
+        .json(&serde_json::json!({ "telefono": telefono, "mensaje": mensaje }))
+        .send()
+        .await
+        .map_err(|e| format!("Error conectando con el bot: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("Error del bot: {}", resp.status()));
+    }
     Ok(())
 }
 

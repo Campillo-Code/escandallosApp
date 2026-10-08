@@ -24,6 +24,9 @@ interface TicketItem {
   cantidad: number;
   precio_unitario: number;
   subtotal: number;
+  iva_porcentaje?: number;
+  nombre?: string;
+  precio?: number;
 }
 
 interface CajaCategoria {
@@ -356,11 +359,11 @@ export default function Pedidos() {
                       <tbody>
                         {items.map((item, i) => (
                           <tr key={i} className="border-t border-gray-200">
-                            <td className="py-1.5"><span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{item.categoria}</span></td>
-                            <td className="py-1.5 text-gray-800">{item.descripcion}</td>
-                            <td className="py-1.5 text-center text-gray-600">{item.cantidad}</td>
-                            <td className="py-1.5 text-right text-gray-600 font-mono">{item.precio_unitario.toFixed(2)} €</td>
-                            <td className="py-1.5 text-right font-mono font-medium">{item.subtotal.toFixed(2)} €</td>
+                            <td className="py-1.5"><span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{item.categoria || "—"}</span></td>
+                            <td className="py-1.5 text-gray-800">{item.descripcion || item.nombre || "—"}</td>
+                            <td className="py-1.5 text-center text-gray-600">{item.cantidad || 1}</td>
+                            <td className="py-1.5 text-right text-gray-600 font-mono">{(item.precio_unitario ?? item.precio ?? 0).toFixed(2)} €</td>
+                            <td className="py-1.5 text-right font-mono font-medium">{(item.subtotal ?? item.precio_unitario ?? 0).toFixed(2)} €</td>
                           </tr>
                         ))}
                       </tbody>
