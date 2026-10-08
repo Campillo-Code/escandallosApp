@@ -3264,6 +3264,70 @@ async fn create_whatsapp_pedido_manual(input: PedidoManualInput) -> Result<i64, 
 }
 
 // ========================================
+// WHATSAPP CHAT
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct WhatsappMessage {
+    pub id: i64,
+    pub telefono: String,
+    pub mensaje: String,
+    pub direccion: String,
+    pub fecha: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct WhatsappConversation {
+    pub telefono: String,
+    pub ultima_fecha: String,
+    pub total_mensajes: i64,
+}
+
+#[tauri::command]
+async fn get_whatsapp_conversaciones() -> Result<Vec<WhatsappConversation>, String> {
+    let pool = &db::get_pool();
+    let rows = sqlx::query(
+        "SELECT telefono, DATE_FORMAT(MAX(created_at), '%Y-%m-%d %H:%i') AS ultima_fecha, COUNT(*) AS total_mensajes FROM whatsapp_messages GROUP BY telefono ORDER BY MAX(created_at) DESC"
+    ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let result: Vec<WhatsappConversation> = rows.iter().map(|r| {
+        WhatsappConversation {
+            telefono: r.try_get("telefono").unwrap_or_default(),
+            ultima_fecha: r.try_get("ultima_fecha").unwrap_or_default(),
+            total_mensajes: r.try_get("total_mensajes").unwrap_or_default(),
+        }
+    }).collect();
+    Ok(result)
+}
+
+#[tauri::command]
+async fn get_whatsapp_messages(telefono: String) -> Result<Vec<WhatsappMessage>, String> {
+    let pool = &db::get_pool();
+    let rows = sqlx::query(
+        "SELECT id, telefono, mensaje, direccion, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS fecha FROM whatsapp_messages WHERE telefono = ? ORDER BY created_at ASC LIMIT 100"
+    ).bind(&telefono).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    let result: Vec<WhatsappMessage> = rows.iter().map(|r| {
+        WhatsappMessage {
+            id: r.try_get("id").unwrap_or_default(),
+            telefono: r.try_get("telefono").unwrap_or_default(),
+            mensaje: r.try_get("mensaje").unwrap_or_default(),
+            direccion: r.try_get("direccion").unwrap_or_default(),
+            fecha: r.try_get("fecha").unwrap_or_default(),
+        }
+    }).collect();
+    Ok(result)
+}
+
+#[tauri::command]
+async fn send_whatsapp_message_manual(telefono: String, mensaje: String) -> Result<(), String> {
+    let pool = &db::get_pool();
+    // Guardar en BBDD
+    sqlx::query("INSERT INTO whatsapp_messages (telefono, mensaje, direccion) VALUES (?, ?, 'manual_out')")
+        .bind(&telefono).bind(&mensaje)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ========================================
 // MENU DEL DIA
 // ========================================
 
@@ -3763,6 +3827,9 @@ pub fn run() {
             get_whatsapp_pedidos_nuevos,
             create_whatsapp_pedido_manual,
             delete_whatsapp_pedido,
+            get_whatsapp_conversaciones,
+            get_whatsapp_messages,
+            send_whatsapp_message_manual,
             get_menu_del_dia,
             get_menu_del_dia_hoy,
             save_menu_del_dia,

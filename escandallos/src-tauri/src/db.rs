@@ -289,6 +289,17 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE caja_platos ADD activo_pedido/activo_encargo completed");
     }
 
+    // WHATSAPP_MESSAGES: Create table for chat
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS whatsapp_messages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        telefono VARCHAR(30) NOT NULL,
+        mensaje TEXT NOT NULL,
+        direccion VARCHAR(10) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_msg_telefono (telefono),
+        KEY idx_msg_created (created_at)
+    )").execute(pool).await;
+
 
 
     // MENU DEL DIA: Create table
