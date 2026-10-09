@@ -27,6 +27,8 @@ interface TicketItem {
   iva_porcentaje?: number;
   nombre?: string;
   precio?: number;
+  modificacion?: string;
+  precio_modificacion?: number;
 }
 
 interface CajaCategoria {
@@ -66,7 +68,7 @@ export default function Pedidos() {
   const [formTipo, setFormTipo] = useState<"pedido" | "encargo">("pedido");
   const [formNombre, setFormNombre] = useState("");
   const [formTelefono, setFormTelefono] = useState("");
-  const [formItems, setFormItems] = useState<{ categoria: string; descripcion: string; cantidad: number; precio_unitario: number; subtotal: number }[]>([]);
+  const [formItems, setFormItems] = useState<{ categoria: string; descripcion: string; cantidad: number; precio_unitario: number; subtotal: number; modificacion?: string; precio_modificacion?: number }[]>([]);
   const [formNotas, setFormNotas] = useState("");
   const [formFechaEntrega, setFormFechaEntrega] = useState("");
   const [categorias, setCategorias] = useState<CajaCategoria[]>([]);
@@ -194,18 +196,38 @@ export default function Pedidos() {
     if (formTipo === 'encargo' && plato.precio_venta_entero) {
       precio = plato.precio_venta_entero;
     }
-    setFormItems(prev => [...prev, { categoria: cat?.nombre || "", descripcion: plato.nombre, cantidad: 1, precio_unitario: precio, subtotal: precio }]);
+    setFormItems(prev => [...prev, { categoria: cat?.nombre || "", descripcion: plato.nombre, cantidad: 1, precio_unitario: precio, subtotal: precio, modificacion: "", precio_modificacion: 0 }]);
   };
 
   const updateItemCantidad = (index: number, cantidad: number) => {
-    setFormItems(prev => prev.map((item, i) => i === index ? { ...item, cantidad, subtotal: item.precio_unitario * cantidad } : item));
+    setFormItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const newSubtotal = (item.precio_unitario * cantidad) + (item.precio_modificacion || 0);
+      return { ...item, cantidad, subtotal: newSubtotal };
+    }));
+  };
+
+  const updateItemModificacion = (index: number, modificacion: string) => {
+    setFormItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const newSubtotal = (item.precio_unitario * item.cantidad) + (item.precio_modificacion || 0);
+      return { ...item, modificacion, subtotal: newSubtotal };
+    }));
+  };
+
+  const updateItemPrecioMod = (index: number, precioMod: number) => {
+    setFormItems(prev => prev.map((item, i) => {
+      if (i !== index) return item;
+      const newSubtotal = (item.precio_unitario * item.cantidad) + precioMod;
+      return { ...item, precio_modificacion: precioMod, subtotal: newSubtotal };
+    }));
   };
 
   const removeItem = (index: number) => {
     setFormItems(prev => prev.filter((_, i) => i !== index));
   };
 
-  const formTotal = formItems.reduce((sum, item) => sum + item.subtotal, 0);
+  const formTotal = formItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
 
   const handleCrearPedido = async () => {
     if (formItems.length === 0) { alert("Añade al menos un plato"); return; }
@@ -353,6 +375,7 @@ export default function Pedidos() {
                           <th className="text-left pb-1">Plato</th>
                           <th className="text-center pb-1">Uds</th>
                           <th className="text-right pb-1">Precio</th>
+                          <th className="text-right pb-1">Ajuste</th>
                           <th className="text-right pb-1">Subtotal</th>
                         </tr>
                       </thead>
@@ -360,9 +383,19 @@ export default function Pedidos() {
                         {items.map((item, i) => (
                           <tr key={i} className="border-t border-gray-200">
                             <td className="py-1.5"><span className="inline-block px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{item.categoria || "—"}</span></td>
-                            <td className="py-1.5 text-gray-800">{item.descripcion || item.nombre || "—"}</td>
+                            <td className="py-1.5 text-gray-800">
+                              {item.descripcion || item.nombre || "—"}
+                              {item.modificacion && <div className="text-xs text-orange-600 italic">📝 {item.modificacion}</div>}
+                            </td>
                             <td className="py-1.5 text-center text-gray-600">{item.cantidad || 1}</td>
                             <td className="py-1.5 text-right text-gray-600 font-mono">{(item.precio_unitario ?? item.precio ?? 0).toFixed(2)} €</td>
+                            <td className="py-1.5 text-right font-mono text-xs">
+                              {item.precio_modificacion ? (
+                                <span className={item.precio_modificacion > 0 ? "text-red-600" : "text-green-600"}>
+                                  {item.precio_modificacion > 0 ? "+" : ""}{item.precio_modificacion.toFixed(2)} €
+                                </span>
+                              ) : "—"}
+                            </td>
                             <td className="py-1.5 text-right font-mono font-medium">{(item.subtotal ?? item.precio_unitario ?? 0).toFixed(2)} €</td>
                           </tr>
                         ))}
@@ -420,32 +453,58 @@ export default function Pedidos() {
               {formTipo === "encargo" && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de entrega</label>
-                  <input type="date" value={formFechaEntrega} onChange={(e) => setFormFechaEntrega(e.target.value)} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  <DateInput value={formFechaEntrega} onChange={setFormFechaEntrega} />
                 </div>
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Añadir plato</label>
                 <SearchableSelect
-                  options={platos.map(p => { const cat = categorias.find(c => c.id === p.categoria_id); const precio = (cat?.precio || 0) + (p.plus || 0); return { value: p.id, label: `${p.nombre} (${cat?.nombre || ""}) - ${precio.toFixed(2)}€` }; })}
+                  options={platos
+                    .filter(p => {
+                      const tipo = p.tipo_receta ?? "pedido";
+                      if (formTipo === "encargo") return (tipo === "encargo" || tipo === "ambos") && p.precio_venta_entero != null;
+                      return tipo === "pedido" || tipo === "ambos" || tipo === null;
+                    })
+                    .map(p => {
+                      const cat = categorias.find(c => c.id === p.categoria_id);
+                      const precio = formTipo === "encargo" && p.precio_venta_entero
+                        ? p.precio_venta_entero
+                        : (cat?.precio || 0) + (p.plus || 0);
+                      return { value: p.id, label: `${p.nombre} (${cat?.nombre || ""}) - ${precio.toFixed(2)}€` };
+                    })}
                   value={0} onChange={(val) => { if (val) addItemManual(val); }} placeholder="Seleccionar plato..." />
               </div>
               {formItems.length > 0 && (
-                <div className="border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead className="bg-gray-50"><tr><th className="text-left px-3 py-2">Plato</th><th className="text-center px-3 py-2">Uds</th><th className="text-right px-3 py-2">Precio</th><th className="text-right px-3 py-2">Subtotal</th><th className="w-8"></th></tr></thead>
-                    <tbody className="divide-y">
-                      {formItems.map((item, i) => (
-                        <tr key={i}>
-                          <td className="px-3 py-2"><span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded mr-1">{item.categoria}</span>{item.descripcion}</td>
-                          <td className="px-3 py-2 text-center"><input type="number" min="1" value={item.cantidad} onChange={(e) => updateItemCantidad(i, parseInt(e.target.value) || 1)} className="w-16 border rounded px-2 py-1 text-center text-sm" /></td>
-                          <td className="px-3 py-2 text-right font-mono">{item.precio_unitario.toFixed(2)} €</td>
-                          <td className="px-3 py-2 text-right font-mono font-medium">{item.subtotal.toFixed(2)} €</td>
-                          <td className="px-3 py-2"><button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"><X size={14} /></button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-gray-50 font-bold"><tr><td colSpan={3} className="px-3 py-2 text-right">Total:</td><td className="px-3 py-2 text-right font-mono">{formTotal.toFixed(2)} €</td><td></td></tr></tfoot>
-                  </table>
+                <div className="space-y-3">
+                  {formItems.map((item, i) => (
+                    <div key={i} className="border rounded-lg p-3 bg-gray-50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">{item.categoria}</span>
+                        <span className="font-medium text-sm flex-1">{item.descripcion}</span>
+                        <span className="font-mono text-sm">{item.precio_unitario.toFixed(2)} €</span>
+                        <button onClick={() => removeItem(i)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-500">Uds:</label>
+                          <input type="number" min="1" value={item.cantidad} onChange={(e) => updateItemCantidad(i, parseInt(e.target.value) || 1)} className="w-16 border rounded px-2 py-1 text-center text-sm" />
+                        </div>
+                        <div className="flex-1">
+                          <input type="text" value={item.modificacion || ""} onChange={(e) => updateItemModificacion(i, e.target.value)} placeholder="Modificación (ej: sin frutos secos, añadir nata...)" className="w-full border rounded px-2 py-1 text-xs" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <label className="text-xs text-gray-500">Ajuste €:</label>
+                          <input type="number" step="0.01" value={item.precio_modificacion || 0} onChange={(e) => updateItemPrecioMod(i, parseFloat(e.target.value) || 0)} className="w-20 border rounded px-2 py-1 text-center text-sm" />
+                        </div>
+                      </div>
+                      <div className="flex justify-end mt-1">
+                        <span className="text-sm font-mono">Subtotal: <b>{item.subtotal.toFixed(2)} €</b></span>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-end bg-gray-50 rounded-lg p-3 font-bold">
+                    <span>Total: {formTotal.toFixed(2)} €</span>
+                  </div>
                 </div>
               )}
               <div>

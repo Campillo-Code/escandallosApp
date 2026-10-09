@@ -3250,7 +3250,7 @@ async fn create_whatsapp_pedido_manual(input: PedidoManualInput) -> Result<i64, 
     let pool = &db::get_pool();
     let items_json = serde_json::to_string(&input.items).map_err(|e| e.to_string())?;
     let result = sqlx::query(
-        "INSERT INTO whatsapp_pedidos (telefono, nombre_cliente, items, total, notas, tipo, estado, fecha_entrega) VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?)"
+        "INSERT INTO whatsapp_pedidos (telefono, nombre_cliente, items, total, notas, tipo, estado, fecha_entrega) VALUES (?, ?, ?, ?, ?, ?, 'confirmado', ?)"
     )
     .bind(&input.telefono)
     .bind(&input.nombre_cliente)
