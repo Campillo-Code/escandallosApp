@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer, Download, Banknote } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 
@@ -42,6 +42,35 @@ export default function Configuracion() {
   const [loadingPrinters, setLoadingPrinters] = useState(true);
   const [appVersion, setAppVersion] = useState<string>("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [serialPorts, setSerialPorts] = useState<string[]>([]);
+  const [selectedPort, setSelectedPort] = useState<string>("");
+  const [cashDrawerTest, setCashDrawerTest] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testingDrawer, setTestingDrawer] = useState(false);
+
+  const loadSerialPorts = async () => {
+    try {
+      const ports = await invoke<string[]>("list_serial_ports");
+      setSerialPorts(ports);
+      if (ports.length > 0 && !selectedPort) {
+        setSelectedPort(ports[0]);
+      }
+    } catch (e) {
+      console.error("Error loading serial ports:", e);
+    }
+  };
+
+  const testCashDrawer = async () => {
+    setTestingDrawer(true);
+    setCashDrawerTest(null);
+    try {
+      const msg = await invoke<string>("test_cash_drawer", { puerto: selectedPort || null });
+      setCashDrawerTest({ ok: true, msg });
+    } catch (e) {
+      setCashDrawerTest({ ok: false, msg: String(e) });
+    } finally {
+      setTestingDrawer(false);
+    }
+  };
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
 
@@ -107,6 +136,7 @@ export default function Configuracion() {
   useEffect(() => {
     loadConfigs();
     loadPrinters();
+    loadSerialPorts();
   }, []);
 
   const handlePrinterChange = (printerName: string) => {
@@ -341,6 +371,53 @@ export default function Configuracion() {
             </button>
           </div>
         )}
+      </div>
+
+      {/* Cash Drawer Configuration */}
+      <div className="mt-8 bg-white rounded-lg shadow p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Banknote size={20} className="text-gray-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Caja Registradora</h3>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">Conecta tu caja registradora USB para abrirla automáticamente al cobrar en efectivo</p>
+
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">Puerto serie</label>
+          {serialPorts.length > 0 ? (
+            <select
+              value={selectedPort}
+              onChange={(e) => setSelectedPort(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {serialPorts.map(port => (
+                <option key={port} value={port}>{port}</option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-orange-500">No se detectaron puertos serie. Conecta la caja registradora USB.</p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button onClick={testCashDrawer} disabled={testingDrawer}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 text-sm">
+            <Banknote size={16} />
+            {testingDrawer ? "Probando..." : "Probar conexión"}
+          </button>
+          <button onClick={loadSerialPorts} className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
+            Actualizar puertos
+          </button>
+        </div>
+
+        {cashDrawerTest && (
+          <div className={`mt-3 px-4 py-3 rounded-lg text-sm ${cashDrawerTest.ok ? "bg-green-50 text-green-700 border border-green-200" : "bg-red-50 text-red-700 border border-red-200"}`}>
+            {cashDrawerTest.msg}
+          </div>
+        )}
+
+        <div className="mt-4 text-xs text-gray-400">
+          <p>Si tu caja no está en COM3, configura la variable de entorno <code className="bg-gray-100 px-1 rounded">CASH_DRAWER_PORT</code> con el puerto correcto.</p>
+        </div>
       </div>
     </div>
   );

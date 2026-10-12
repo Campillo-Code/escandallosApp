@@ -2,6 +2,7 @@ mod db;
 
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Row};
+use std::io::Write;
 use tauri::Manager;
 
 // ========================================
@@ -3687,6 +3688,58 @@ async fn execute_despiece(despiece_id: i64) -> Result<String, String> {
 }
 
 // ========================================
+// ========================================
+// CAJA REGISTRADORA (CASH DRAWER)
+// ========================================
+
+#[tauri::command]
+async fn open_cash_drawer() -> Result<String, String> {
+    let port_name = std::env::var("CASH_DRAWER_PORT").unwrap_or_else(|_| {
+        if cfg!(target_os = "linux") { "/dev/ttyUSB0".to_string() } else { "COM4".to_string() }
+    });
+
+    let mut port = serialport::new(&port_name, 9600)
+        .timeout(std::time::Duration::from_secs(2))
+        .open()
+        .map_err(|e| format!("No se pudo abrir el puerto {}: {}", port_name, e))?;
+
+    // Comando ESC/POS para abrir caja registradora
+    let open_cmd: [u8; 5] = [0x1B, 0x70, 0x00, 0x0F, 0xFF];
+    port.write_all(&open_cmd).map_err(|e| format!("Error enviando comando: {}", e))?;
+    port.flush().map_err(|e| format!("Error flush: {}", e))?;
+
+    println!("[CashDrawer] Comando enviado a {}", port_name);
+    Ok(format!("Caja abierta desde {}", port_name))
+}
+
+#[tauri::command]
+async fn test_cash_drawer(puerto: Option<String>) -> Result<String, String> {
+    let port_name = puerto.unwrap_or_else(|| {
+        std::env::var("CASH_DRAWER_PORT").unwrap_or_else(|_| {
+            if cfg!(target_os = "linux") { "/dev/ttyUSB0".to_string() } else { "COM4".to_string() }
+        })
+    });
+
+    let mut port = serialport::new(&port_name, 9600)
+        .timeout(std::time::Duration::from_secs(2))
+        .open()
+        .map_err(|e| format!("No se pudo abrir el puerto {}: {}", port_name, e))?;
+
+    let open_cmd: [u8; 5] = [0x1B, 0x70, 0x00, 0x0F, 0xFF];
+    port.write_all(&open_cmd).map_err(|e| format!("Error enviando comando: {}", e))?;
+    port.flush().map_err(|e| format!("Error flush: {}", e))?;
+
+    Ok(format!("✓ Conexión exitosa con {}", port_name))
+}
+
+#[tauri::command]
+async fn list_serial_ports() -> Result<Vec<String>, String> {
+    let ports = serialport::available_ports().map_err(|e| format!("Error listando puertos: {}", e))?;
+    let names: Vec<String> = ports.iter().map(|p| p.port_name.clone()).collect();
+    Ok(names)
+}
+
+// ========================================
 // INICIO
 // ========================================
 
@@ -3847,6 +3900,9 @@ pub fn run() {
             update_despiece,
             delete_despiece,
             execute_despiece,
+            open_cash_drawer,
+            test_cash_drawer,
+            list_serial_ports,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

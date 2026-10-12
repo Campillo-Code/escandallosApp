@@ -71,6 +71,7 @@ export default function Caja() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [showDatáfonoModal, setShowDatáfonoModal] = useState(false);
   const [ticketOrigen, setTicketOrigen] = useState<string>("pedido");
+  const [importeRecibido, setImporteRecibido] = useState<string>("");
   const [error, setError] = useState("");
 
   const getLocalDate = () => {
@@ -240,16 +241,29 @@ export default function Caja() {
       setShowDatáfonoModal(true);
       return;
     }
+    // Validar importe recibido en efectivo
+    if (metodoPago === "efectivo" && importeRecibido) {
+      const recibido = parseFloat(importeRecibido);
+      if (isNaN(recibido) || recibido < totalTicket) {
+        alert(`El importe recibido (${recibido.toFixed(2)} €) es inferior al total (${totalTicket.toFixed(2)} €)`);
+        return;
+      }
+    }
     try {
       console.log("[Caja] Cobrando:", { items: ticket, total: totalTicket, notas, metodoPago, tipo: ticketOrigen });
       await invoke("create_caja_ticket", {
         input: { items: ticket, total: totalTicket, notas: notas || null, metodo_pago: metodoPago, tipo: ticketOrigen }
       });
       console.log("[Caja] Ticket creado OK");
+      // Abrir caja registradora si está en efectivo
+      if (metodoPago === "efectivo") {
+        try { await invoke("open_cash_drawer"); } catch (e) { console.warn("[Caja] No se pudo abrir la caja:", e); }
+      }
       setTicket([]);
       setNotas("");
       setMetodoPago("efectivo");
       setTicketOrigen("pedido");
+      setImporteRecibido("");
       await loadResumen();
       await loadTicketsHoy();
     } catch (e) { console.error("[Caja] Error cobrando:", e); setError(String(e)); }
@@ -422,7 +436,7 @@ export default function Caja() {
                   { id: "efectivo", label: "Efectivo" },
                   { id: "tarjeta", label: "Tarjeta" },
                 ].map(m => (
-                  <button key={m.id} onClick={() => setMetodoPago(m.id)}
+                  <button key={m.id} onClick={() => { setMetodoPago(m.id); setImporteRecibido(""); }}
                     className={`py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                       metodoPago === m.id
                         ? "bg-blue-600 text-white border-blue-600"
@@ -433,6 +447,23 @@ export default function Caja() {
                 ))}
               </div>
             </div>
+            {metodoPago === "efectivo" && ticket.length > 0 && (
+              <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <label className="block text-xs text-amber-700 font-medium mb-1">Importe recibido del cliente (€)</label>
+                <input type="number" step="0.01" min="0" value={importeRecibido} onChange={(e) => setImporteRecibido(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border border-amber-300 rounded-lg px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-amber-500 focus:border-transparent" />
+                {importeRecibido && parseFloat(importeRecibido) >= totalTicket && (
+                  <div className="mt-2 flex justify-between items-center">
+                    <span className="text-xs text-amber-700 font-medium">Cambio a devolver:</span>
+                    <span className="text-lg font-bold text-green-700">{(parseFloat(importeRecibido) - totalTicket).toFixed(2)} €</span>
+                  </div>
+                )}
+                {importeRecibido && parseFloat(importeRecibido) < totalTicket && (
+                  <div className="mt-2 text-xs text-red-600 font-medium">Faltan {(totalTicket - parseFloat(importeRecibido)).toFixed(2)} €</div>
+                )}
+              </div>
+            )}
             <button onClick={cobrar} disabled={ticket.length === 0}
               className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed text-lg">
               Cobrar {totalTicket.toFixed(2)} €
