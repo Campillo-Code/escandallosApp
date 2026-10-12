@@ -2113,10 +2113,13 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
 
         let receta_id: i64 = receta.map(|r| r.try_get("id").unwrap_or(0i64)).unwrap_or(0);
 
-        // Get real selling price from Caja (not from receta)
-        let precio_venta = buscar_precio_caja(pool, &v.plato_nombre)
+        // Get real selling price: first try Caja, fallback to actual average price from sales
+        let mut precio_venta = buscar_precio_caja(pool, &v.plato_nombre)
             .await
             .unwrap_or(0.0);
+        if precio_venta <= 0.0 && v.unidades_vendidas > 0 {
+            precio_venta = v.total_ingresos / v.unidades_vendidas as f64;
+        }
 
         // Calculate cost properly using helper
         let coste_porcion: f64 = if receta_id > 0 {
