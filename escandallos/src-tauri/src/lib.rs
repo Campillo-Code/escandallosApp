@@ -1986,6 +1986,76 @@ async fn get_ventas_por_plato(fecha_desde: Option<String>, fecha_hasta: Option<S
 }
 
 // ========================================
+// COSTE HELPER - cálculo correcto con conversiones y sub-recetas
+// ========================================
+
+fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(f64, f64), String>> + Send + '_>> {
+    Box::pin(async move {
+        // Devuelve (coste_total, coste_porcion)
+        let receta_row = sqlx::query(
+            "SELECT CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?"
+        ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+        let porciones: f64 = receta_row.and_then(|r| r.try_get::<f64, _>(0).ok()).unwrap_or(1.0);
+
+        let ri_rows = sqlx::query(
+            "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma FROM receta_ingredientes ri WHERE ri.receta_id = ?"
+        ).bind(receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+        let mut coste_total: f64 = 0.0;
+
+        for row in ri_rows {
+            let ingrediente_id: Option<i64> = row.try_get("ingrediente_id").ok().flatten();
+            let sub_receta_id: Option<i64> = row.try_get("sub_receta_id").ok().flatten();
+            let cantidad: f64 = row.try_get::<f64, _>("cantidad").unwrap_or(0.0);
+            let unidad: String = row.try_get("unidad").unwrap_or_default();
+            let merma: f64 = row.try_get::<f64, _>("merma").unwrap_or(0.0);
+
+            if let Some(sub_rid) = sub_receta_id {
+                // Sub-receta: calcular su coste recursivamente
+                let sub_cost = calcular_coste_receta(pool, sub_rid).await.unwrap_or((0.0, 0.0));
+                let sub_porciones: f64 = sqlx::query_scalar(
+                    "SELECT CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?"
+                ).bind(sub_rid).fetch_optional(pool).await.ok().flatten().unwrap_or(1.0);
+                let prop_coste = if sub_porciones > 0.0 { (cantidad / sub_porciones) * sub_cost.0 * (1.0 + merma / 100.0) } else { 0.0 };
+                coste_total += prop_coste;
+            } else if let Some(iid) = ingrediente_id {
+                // Ingrediente directo
+                let info: Option<(f64, String)> = sqlx::query_as(
+                    "SELECT CAST(ip.precio_por_unidad_base AS DOUBLE), i.unidad_base FROM ingrediente_precios ip INNER JOIN ingredientes i ON ip.ingrediente_id = i.id WHERE ip.ingrediente_id = ? AND ip.es_predeterminado = 1 LIMIT 1"
+                ).bind(iid).fetch_optional(pool).await.ok().flatten();
+
+                if let Some((precio, unidad_base)) = info {
+                    // Convertir unidades
+                    let cantidad_base = if unidad == unidad_base { cantidad }
+                    else if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { cantidad * 1000.0 }
+                    else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { cantidad / 1000.0 }
+                    else { cantidad };
+                    coste_total += cantidad_base * precio * (1.0 + merma / 100.0);
+                }
+            }
+        }
+
+        let coste_porcion = if porciones > 0.0 { coste_total / porciones } else { coste_total };
+        Ok((coste_total, coste_porcion))
+    })
+}
+
+async fn buscar_precio_caja(pool: &sqlx::MySqlPool, plato_nombre: &str) -> Option<f64> {
+    // El formato en ventas es "Categoria - Plato", extraer solo el plato
+    let nombre_plato = if plato_nombre.contains(" - ") {
+        plato_nombre.rsplit(" - ").next().unwrap_or(plato_nombre)
+    } else {
+        plato_nombre
+    };
+
+    // Buscar precio real desde caja_platos + caja_categorias
+    let result: Option<f64> = sqlx::query_scalar(
+        "SELECT c.precio + COALESCE(cp.plus, 0) FROM caja_platos cp INNER JOIN caja_categorias c ON cp.categoria_id = c.id WHERE cp.nombre = ? AND cp.activo = 1 LIMIT 1"
+    ).bind(nombre_plato).fetch_optional(pool).await.ok().flatten();
+    result
+}
+
+// ========================================
 // MENU ENGINEERING (BCG Matrix)
 // ========================================
 
@@ -2038,31 +2108,25 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
     for v in &ventas {
         // Try to find matching receta
         let receta = sqlx::query(
-            "SELECT r.id, CAST(r.precio_venta AS DOUBLE), COALESCE(r.margen_porcentaje, 50.0), 0.0 FROM recetas r WHERE r.nombre = SUBSTRING_INDEX(?, ' - ', -1) LIMIT 1"
+            "SELECT r.id FROM recetas r WHERE r.nombre = SUBSTRING_INDEX(?, ' - ', -1) LIMIT 1"
         ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
-        let (receta_id, precio_venta, margen_porcentaje, _coste) = match receta {
-            Some(r) => (
-                r.try_get("id").unwrap_or(0i64),
-                r.try_get::<f64, _>(1).unwrap_or(0.0),
-                r.try_get::<f64, _>(2).unwrap_or(50.0),
-                r.try_get::<f64, _>(3).unwrap_or(0.0),
-            ),
-            None => (0, 0.0, 50.0, 0.0),
-        };
+        let receta_id: i64 = receta.map(|r| r.try_get("id").unwrap_or(0i64)).unwrap_or(0);
 
-        // Calculate cost from receta if available
+        // Get real selling price from Caja (not from receta)
+        let precio_venta = buscar_precio_caja(pool, &v.plato_nombre)
+            .await
+            .unwrap_or(0.0);
+
+        // Calculate cost properly using helper
         let coste_porcion: f64 = if receta_id > 0 {
-            let coste_result = sqlx::query(
-                "SELECT COALESCE(CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE), 0) AS coste_porcion FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE ri.receta_id = ?"
-            ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
-            coste_result.and_then(|r| r.try_get::<f64, _>(0).ok()).unwrap_or(0.0)
+            calcular_coste_receta(pool, receta_id).await.unwrap_or((0.0, 0.0)).1
         } else {
             0.0
         };
 
         let margen_euros = if precio_venta > 0.0 { precio_venta - coste_porcion } else { 0.0 };
-        let margen_real = if precio_venta > 0.0 { ((precio_venta - coste_porcion) / precio_venta) * 100.0 } else { margen_porcentaje };
+        let margen_real = if precio_venta > 0.0 { ((precio_venta - coste_porcion) / precio_venta) * 100.0 } else { 0.0 };
 
         // BCG classification
         let popularidad_alta = (v.unidades_vendidas as f64) >= median_units;
@@ -2158,12 +2222,18 @@ async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<Strin
         total_ingresos += v.total_ingresos;
         total_unidades += v.unidades_vendidas;
 
-        // Try to get cost from receta
-        let coste_result = sqlx::query(
-            "SELECT COALESCE(CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) / ANY_VALUE(r.porciones) AS DOUBLE), 0) FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 INNER JOIN recetas r ON ri.receta_id = r.id WHERE r.nombre = SUBSTRING_INDEX(?, ' - ', -1)"
+        // Find matching receta
+        let receta = sqlx::query(
+            "SELECT r.id FROM recetas r WHERE r.nombre = SUBSTRING_INDEX(?, ' - ', -1) LIMIT 1"
         ).bind(&v.plato_nombre).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+        let receta_id: i64 = receta.map(|r| r.try_get("id").unwrap_or(0i64)).unwrap_or(0);
 
-        let coste_porcion = coste_result.and_then(|r| r.try_get::<f64, _>(0).ok()).unwrap_or(0.0);
+        // Calculate cost properly using helper
+        let coste_porcion: f64 = if receta_id > 0 {
+            calcular_coste_receta(pool, receta_id).await.unwrap_or((0.0, 0.0)).1
+        } else {
+            0.0
+        };
         let coste_total_plato = coste_porcion * v.unidades_vendidas as f64;
         total_costes += coste_total_plato;
 
