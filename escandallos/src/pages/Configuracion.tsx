@@ -71,17 +71,7 @@ export default function Configuracion() {
     setTestingThermal(true);
     setThermalPrinterTest(null);
     try {
-      const msg = await invoke<string>("print_ticket", {
-        data: {
-          fecha: new Date().toISOString().split("T")[0],
-          hora: new Date().toLocaleTimeString("es-ES"),
-          total: 0,
-          metodo_pago: "test",
-          notas: "Test de impresión",
-          items: [{ descripcion: "TEST IMPRESIÓN", cantidad: 1, precio_unitario: 0, subtotal: 0 }],
-        },
-        puerto: selectedPrinterPort || null,
-      });
+      const msg = await invoke<string>("test_thermal_printer", { puerto: selectedPrinterPort || null });
       setThermalPrinterTest({ ok: true, msg });
     } catch (e) {
       setThermalPrinterTest({ ok: false, msg: String(e) });
@@ -410,7 +400,7 @@ export default function Configuracion() {
           <button onClick={testThermalPrinter} disabled={testingThermal}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 text-sm">
             <Receipt size={16} />
-            {testingThermal ? "Imprimiendo..." : "Imprimir ticket de prueba"}
+            {testingThermal ? "Probando..." : "Probar conexión"}
           </button>
           <button onClick={loadSerialPorts} className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
             Actualizar puertos

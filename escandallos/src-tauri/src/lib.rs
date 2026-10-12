@@ -3808,6 +3808,31 @@ async fn list_serial_ports() -> Result<Vec<String>, String> {
     Ok(names)
 }
 
+fn find_printer_port() -> Option<String> {
+    let ports = serialport::available_ports().ok()?;
+    // Buscar puertos que parezcan impresoras térmicas o USB serial
+    for port in &ports {
+        let name = &port.port_name;
+        let desc = match &port.port_type {
+            serialport::SerialPortType::UsbPort(info) => {
+                format!("{} {}", info.product.as_deref().unwrap_or(""), info.manufacturer.as_deref().unwrap_or(""))
+            }
+            _ => String::new(),
+        };
+        let combined = format!("{} {}", name, desc).to_lowercase();
+        if combined.contains("printer") || combined.contains("thermal") || combined.contains("pos") || combined.contains("pm-246") {
+            return Some(name.clone());
+        }
+    }
+    // Si no encuentra nada específico, devolver el primer puerto USB
+    for port in &ports {
+        if let serialport::SerialPortType::UsbPort(_) = &port.port_type {
+            return Some(port.port_name.clone());
+        }
+    }
+    None
+}
+
 // ========================================
 // IMPRESORA TÉRMICA - ESC/POS
 // ========================================
@@ -3889,9 +3914,11 @@ fn build_ticket_escpos(data: &TicketPrintData) -> Vec<u8> {
 
 #[tauri::command]
 async fn print_ticket(data: TicketPrintData, puerto: Option<String>) -> Result<String, String> {
-    let port_name = puerto.unwrap_or_else(|| {
+    let port_name = puerto.filter(|p| !p.is_empty()).unwrap_or_else(|| {
         std::env::var("THERMAL_PRINTER_PORT").unwrap_or_else(|_| {
-            if cfg!(target_os = "linux") { "/dev/usb/lp0".to_string() } else { "COM5".to_string() }
+            find_printer_port().unwrap_or_else(|| {
+                if cfg!(target_os = "linux") { "/dev/usb/lp0".to_string() } else { "COM3".to_string() }
+            })
         })
     });
 
@@ -3906,6 +3933,29 @@ async fn print_ticket(data: TicketPrintData, puerto: Option<String>) -> Result<S
 
     println!("[Printer] Ticket enviado a {}", port_name);
     Ok(format!("Ticket impreso en {}", port_name))
+}
+
+#[tauri::command]
+async fn test_thermal_printer(puerto: Option<String>) -> Result<String, String> {
+    let port_name = puerto.filter(|p| !p.is_empty()).unwrap_or_else(|| {
+        std::env::var("THERMAL_PRINTER_PORT").unwrap_or_else(|_| {
+            find_printer_port().unwrap_or_else(|| {
+                if cfg!(target_os = "linux") { "/dev/usb/lp0".to_string() } else { "COM3".to_string() }
+            })
+        })
+    });
+
+    let mut port = serialport::new(&port_name, 9600)
+        .timeout(std::time::Duration::from_secs(2))
+        .open()
+        .map_err(|e| format!("No se pudo abrir {}: {}", port_name, e))?;
+
+    // Enviar solo inicialización (ESC @) para verificar conexión
+    let init: [u8; 2] = [0x1B, 0x40];
+    port.write_all(&init).map_err(|e| format!("Error: {}", e))?;
+    port.flush().map_err(|e| format!("Error: {}", e))?;
+
+    Ok(format!("✓ Conexión exitosa con {}", port_name))
 }
 
 // ========================================
@@ -4073,6 +4123,7 @@ pub fn run() {
             test_cash_drawer,
             list_serial_ports,
             print_ticket,
+            test_thermal_printer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
