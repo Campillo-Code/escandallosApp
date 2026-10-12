@@ -58,6 +58,7 @@ export default function Produccion() {
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [printModal, setPrintModal] = useState<{ prodId: number; width: number; height: number; orientation: "landscape" | "portrait"; custom: boolean } | null>(null);
+  const [printData, setPrintData] = useState<EtiquetaData | null>(null);
 
   const LABEL_SIZES = [
     { label: "100 x 62 mm (Brother QL)", w: 100, h: 62 },
@@ -148,6 +149,10 @@ export default function Produccion() {
   const handlePrintEtiqueta = async (prodId: number, e: React.MouseEvent) => {
     e.stopPropagation();
     setPrintModal({ prodId, width: 100, height: 62, orientation: "landscape", custom: false });
+    try {
+      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
+      setPrintData(data);
+    } catch (err) { console.error(err); }
   };
 
   const confirmPrint = async () => {
@@ -401,6 +406,56 @@ export default function Produccion() {
                 </button>
               </div>
             </div>
+            {/* Previsualización */}
+            {printData && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Previsualización</label>
+                <div className="border border-gray-300 rounded-lg p-2 bg-gray-50 flex items-center justify-center" style={{ minHeight: "180px" }}>
+                  <div
+                    className="bg-white border border-gray-400 shadow-sm overflow-hidden"
+                    style={{
+                      width: `${Math.min(printModal.orientation === "landscape" ? printModal.width : printModal.height, 280)}px`,
+                      height: `${Math.min(printModal.orientation === "landscape" ? printModal.height : printModal.width, 160)}px`,
+                      fontSize: "6px",
+                      lineHeight: "1.3",
+                    }}
+                  >
+                    {/* Header */}
+                    <div className="text-white text-center font-bold py-1" style={{ background: "rgb(40,50,100)", fontSize: "5px" }}>
+                      ELABORADO EN VIVIENDA PARTICULAR
+                    </div>
+                    <div className="px-2 py-1">
+                      {/* Nombre */}
+                      <div className="font-bold text-gray-900 truncate" style={{ fontSize: "8px" }}>{printData.receta_nombre}</div>
+                      {/* Lote y fechas */}
+                      <div className="text-gray-600 mt-1">
+                        <div>Lote: {printData.lote_producto}</div>
+                        <div>Elab: {printData.fecha_elaboracion}</div>
+                        {printData.fecha_caducidad && <div>Cad: {printData.fecha_caducidad}</div>}
+                      </div>
+                      <hr className="my-1 border-gray-300" />
+                      {/* Ingredientes */}
+                      <div className="text-gray-500 font-bold" style={{ fontSize: "5px" }}>INGREDIENTES:</div>
+                      <div className="text-gray-700">{printData.ingredientes.join(", ")}</div>
+                      {/* Alérgenos */}
+                      {printData.alergenos.length > 0 && (
+                        <div className="mt-1 px-1 py-0.5 bg-red-50 border border-red-200 rounded" style={{ fontSize: "5px" }}>
+                          <span className="font-bold text-red-700">ALÉRGENOS: </span>
+                          <span className="text-red-600">{printData.alergenos.join(", ")}</span>
+                        </div>
+                      )}
+                      {/* Conservación */}
+                      {printData.conservacion && (
+                        <div className="mt-1 text-gray-500 italic" style={{ fontSize: "5px" }}>
+                          Conservar: {printData.conservacion}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 mt-1 text-center">{printModal.width}x{printModal.height}mm — {printModal.orientation === "landscape" ? "Horizontal" : "Vertical"}</p>
+              </div>
+            )}
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setPrintModal(null)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
               <button onClick={confirmPrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
