@@ -100,15 +100,19 @@ export default function MenuEngineering() {
                 <div className="absolute bottom-3 left-3 text-xs font-bold text-red-600 opacity-30">PERRO</div>
                 <div className="absolute top-0 bottom-0 border-l-2 border-dashed border-gray-400" style={{ left: "50%" }}></div>
                 <div className="absolute left-0 right-0 border-t-2 border-dashed border-gray-400" style={{ top: "50%" }}></div>
-                <div className="absolute -top-5 left-0 text-[10px] text-gray-500 font-medium">Alto</div>
-                <div className="absolute -bottom-5 left-0 text-[10px] text-gray-500 font-medium">Bajo</div>
-                <div className="absolute -bottom-5 right-0 text-[10px] text-gray-500 font-medium">Alto</div>
-                <div className="absolute -top-5 right-0 text-[10px] text-gray-500 font-medium">Alto</div>
+                <div className="absolute -top-5 left-0 text-[10px] text-gray-500 font-medium">Margen ↑</div>
+                <div className="absolute -bottom-5 left-0 text-[10px] text-gray-500 font-medium">Margen ↓</div>
+                <div className="absolute -bottom-5 right-0 text-[10px] text-gray-500 font-medium">Popularidad →</div>
                 {data.length > 0 && data.map((d, i) => {
-                  const xPos = maxX > 0 ? ((maxX - d.unidades_vendidas) / maxX) * 100 : 50;
-                  const yPos = maxY > 0 ? ((maxY - d.margen_porcentaje) / maxY) * 100 : 50;
-                  const clampedX = Math.max(2, Math.min(95, xPos));
-                  const clampedY = Math.max(2, Math.min(95, yPos));
+                  // X: más ventas = más a la derecha (popularidad alta)
+                  // Y: más margen = más arriba (margen alto)
+                  const xPos = maxX > 0 ? ((d.unidades_vendidas / maxX) * 80) + 10 : 50;
+                  const yPos = maxY > 0 ? (100 - (d.margen_porcentaje / maxY) * 80) - 10 : 50;
+                  // Evitar solapamiento: añadir desplazamiento basado en el índice
+                  const offsetX = ((i % 3) - 1) * 8;
+                  const offsetY = (Math.floor(i / 3) % 3 - 1) * 8;
+                  const clampedX = Math.max(8, Math.min(88, xPos + offsetX));
+                  const clampedY = Math.max(8, Math.min(88, yPos + offsetY));
                   const catColor = COLORS[d.categoria] || "#888";
                   return (
                     <div

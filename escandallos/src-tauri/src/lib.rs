@@ -2098,11 +2098,6 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
         return Ok(vec![]);
     }
 
-    // Calculate median of units sold for BCG cutoff
-    let mut units: Vec<i64> = ventas.iter().map(|v| v.unidades_vendidas).collect();
-    units.sort();
-    let median_units = units[units.len() / 2] as f64;
-
     // Try to match each dish to a receta to get margin info
     let mut items: Vec<MenuEngineeringItem> = Vec::new();
     for v in &ventas {
@@ -2131,9 +2126,10 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
         let margen_euros = if precio_venta > 0.0 { precio_venta - coste_porcion } else { 0.0 };
         let margen_real = if precio_venta > 0.0 { ((precio_venta - coste_porcion) / precio_venta) * 100.0 } else { 0.0 };
 
-        // BCG classification
-        let popularidad_alta = (v.unidades_vendidas as f64) >= median_units;
-        let margen_alto = margen_real >= 30.0; // 30% threshold
+        // BCG classification: usar la media en vez de mediana para mejor distribución
+        let mean_units = ventas.iter().map(|v| v.unidades_vendidas as f64).sum::<f64>() / ventas.len() as f64;
+        let popularidad_alta = (v.unidades_vendidas as f64) >= mean_units;
+        let margen_alto = margen_real >= 40.0; // 40% threshold
 
         let categoria = match (popularidad_alta, margen_alto) {
             (true, true) => "estrella",
