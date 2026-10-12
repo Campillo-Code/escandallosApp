@@ -57,7 +57,7 @@ export default function Produccion() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [printModal, setPrintModal] = useState<{ prodId: number; width: number; height: number; orientation: "landscape" | "portrait" } | null>(null);
+  const [printModal, setPrintModal] = useState<{ prodId: number; width: number; height: number; orientation: "landscape" | "portrait"; custom: boolean } | null>(null);
 
   const LABEL_SIZES = [
     { label: "100 x 62 mm (Brother QL)", w: 100, h: 62 },
@@ -147,7 +147,7 @@ export default function Produccion() {
 
   const handlePrintEtiqueta = async (prodId: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    setPrintModal({ prodId, width: 100, height: 62, orientation: "landscape" });
+    setPrintModal({ prodId, width: 100, height: 62, orientation: "landscape", custom: false });
   };
 
   const confirmPrint = async () => {
@@ -343,14 +343,14 @@ export default function Produccion() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño de etiqueta</label>
               <select
-                value={printModal.width === 0 ? "custom" : `${printModal.width}x${printModal.height}`}
+                value={printModal.custom ? "custom" : `${printModal.width}x${printModal.height}`}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val === "custom") {
-                    setPrintModal({ ...printModal, width: 50, height: 50 });
+                    setPrintModal({ ...printModal, custom: true, width: 50, height: 50 });
                   } else {
                     const [w, h] = val.split("x").map(Number);
-                    setPrintModal({ ...printModal, width: w, height: h });
+                    setPrintModal({ ...printModal, custom: false, width: w, height: h });
                   }
                 }}
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -360,18 +360,18 @@ export default function Produccion() {
                 ))}
               </select>
             </div>
-            {printModal.width === 50 && printModal.height === 50 && (
+            {printModal.custom && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Ancho (mm)</label>
                   <input type="number" min="10" max="200" value={printModal.width}
-                    onChange={(e) => setPrintModal({ ...printModal, width: parseInt(e.target.value) || 50 })}
+                    onChange={(e) => setPrintModal({ ...printModal, width: parseInt(e.target.value) || 10 })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Alto (mm)</label>
                   <input type="number" min="10" max="300" value={printModal.height}
-                    onChange={(e) => setPrintModal({ ...printModal, height: parseInt(e.target.value) || 50 })}
+                    onChange={(e) => setPrintModal({ ...printModal, height: parseInt(e.target.value) || 10 })}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2" />
                 </div>
               </div>
