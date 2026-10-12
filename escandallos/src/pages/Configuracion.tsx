@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Printer, Download, Banknote, Receipt } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Download, Banknote, Receipt } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 
@@ -13,11 +13,6 @@ interface DbConfig {
   password: string;
   base_datos: string;
   activa: boolean;
-}
-
-interface PrinterInfo {
-  name: string;
-  is_default: boolean;
 }
 
 const emptyForm: Omit<DbConfig, "id" | "activa"> = {
@@ -37,9 +32,6 @@ export default function Configuracion() {
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [printers, setPrinters] = useState<PrinterInfo[]>([]);
-  const [selectedPrinter, setSelectedPrinter] = useState<string>("");
-  const [loadingPrinters, setLoadingPrinters] = useState(true);
   const [appVersion, setAppVersion] = useState<string>("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [serialPorts, setSerialPorts] = useState<string[]>([]);
@@ -138,37 +130,10 @@ export default function Configuracion() {
     }
   };
 
-  const loadPrinters = async () => {
-    try {
-      const result = await invoke<PrinterInfo[]>("get_printers");
-      setPrinters(result);
-      const saved = localStorage.getItem("selected_printer");
-      if (saved) {
-        setSelectedPrinter(saved);
-      } else {
-        const defaultPrinter = result.find(p => p.is_default);
-        if (defaultPrinter) {
-          setSelectedPrinter(defaultPrinter.name);
-          localStorage.setItem("selected_printer", defaultPrinter.name);
-        }
-      }
-    } catch (e) {
-      console.error("Error loading printers:", e);
-    } finally {
-      setLoadingPrinters(false);
-    }
-  };
-
   useEffect(() => {
     loadConfigs();
-    loadPrinters();
     loadSerialPorts();
   }, []);
-
-  const handlePrinterChange = (printerName: string) => {
-    setSelectedPrinter(printerName);
-    localStorage.setItem("selected_printer", printerName);
-  };
 
   const handleChange = (field: string, value: string | number) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -365,37 +330,6 @@ export default function Configuracion() {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
-
-      {/* Printer Configuration */}
-      <div className="mt-8 bg-white rounded-lg shadow p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Printer size={20} className="text-gray-600" />
-          <h3 className="text-lg font-semibold text-gray-800">Impresora</h3>
-        </div>
-        <p className="text-sm text-gray-500 mb-4">Selecciona la impresora para etiquetas de producción</p>
-        {loadingPrinters ? (
-          <p className="text-sm text-gray-400">Detectando impresoras...</p>
-        ) : printers.length === 0 ? (
-          <p className="text-sm text-orange-500">No se detectaron impresoras. Asegúrate de tener una instalada.</p>
-        ) : (
-          <div className="flex items-center gap-4">
-            <select
-              value={selectedPrinter}
-              onChange={e => handlePrinterChange(e.target.value)}
-              className="flex-1 border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-              {printers.map(p => (
-                <option key={p.name} value={p.name}>
-                  {p.name} {p.is_default ? "(predeterminada)" : ""}
-                </option>
-              ))}
-            </select>
-            <button onClick={loadPrinters} className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm">
-              Actualizar
-            </button>
-          </div>
         )}
       </div>
 
