@@ -298,7 +298,12 @@ export default function Caja() {
   const imprimirTicket = async (ticket: CajaTicket) => {
     try {
       const items: TicketItem[] = JSON.parse(ticket.items);
-      await invoke("print_ticket", {
+      // Obtener impresora seleccionada del sistema
+      const printers = await invoke<string[]>("list_system_printers");
+      const savedPrinter = localStorage.getItem("selected_printer_name");
+      const printerName = savedPrinter && printers.includes(savedPrinter) ? savedPrinter : printers[0];
+      if (!printerName) { setError("No hay impresoras instaladas"); return; }
+      await invoke("print_ticket_system", {
         data: {
           fecha: ticket.fecha,
           hora: ticket.hora,
@@ -312,6 +317,7 @@ export default function Caja() {
             subtotal: i.subtotal,
           })),
         },
+        printerName,
       });
     } catch (e) { setError("Error imprimiendo: " + String(e)); }
   };

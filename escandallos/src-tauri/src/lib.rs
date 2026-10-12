@@ -3834,7 +3834,7 @@ fn find_printer_port() -> Option<String> {
 }
 
 // ========================================
-// IMPRESORA TÉRMICA - ESC/POS
+// IMPRESORA TÉRMICA — Windows Printing System
 // ========================================
 
 #[derive(Debug, Deserialize)]
@@ -3855,107 +3855,128 @@ pub struct TicketPrintItem {
     pub subtotal: f64,
 }
 
-fn build_ticket_escpos(data: &TicketPrintData) -> Vec<u8> {
-    let mut cmd: Vec<u8> = Vec::new();
-
-    // Inicializar impresora
-    cmd.extend_from_slice(&[0x1B, 0x40]);
-
-    // Tamaño de texto normal
-    cmd.extend_from_slice(&[0x1B, 0x21, 0x00]);
-
-    // Centrar
-    cmd.extend_from_slice(&[0x1B, 0x61, 0x01]);
-    cmd.extend_from_slice(b"CON SAZON\n");
-    cmd.extend_from_slice(b"Casa de Comidas\n\n");
-
-    // Izquierda
-    cmd.extend_from_slice(&[0x1B, 0x61, 0x00]);
-    cmd.extend_from_slice(format!("Fecha: {}\n", data.fecha).as_bytes());
-    cmd.extend_from_slice(format!("Hora: {}\n", data.hora).as_bytes());
-    cmd.extend_from_slice(b"--------------------------------\n");
-
-    // Items
-    for item in &data.items {
-        let nombre = if item.descripcion.len() > 24 {
-            format!("{}...", &item.descripcion[..21])
-        } else {
-            item.descripcion.clone()
-        };
-        cmd.extend_from_slice(format!("{}\n", nombre).as_bytes());
-        cmd.extend_from_slice(format!("  {} x {:.2} = {:.2} EUR\n", item.cantidad, item.precio_unitario, item.subtotal).as_bytes());
+#[tauri::command]
+async fn list_system_printers() -> Result<Vec<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        let output = std::process::Command::new("powershell")
+            .args(["-Command", "Get-Printer | Select-Object -ExpandProperty Name"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| e.to_string())?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let printers: Vec<String> = stdout.lines().filter(|l| !l.trim().is_empty()).map(|l| l.trim().to_string()).collect();
+        Ok(printers)
     }
-
-    cmd.extend_from_slice(b"--------------------------------\n");
-
-    // Total en negrita
-    cmd.extend_from_slice(&[0x1B, 0x45, 0x01]); // Negrita ON
-    cmd.extend_from_slice(format!("TOTAL: {:.2} EUR\n", data.total).as_bytes());
-    cmd.extend_from_slice(&[0x1B, 0x45, 0x00]); // Negrita OFF
-
-    if let Some(mp) = &data.metodo_pago {
-        cmd.extend_from_slice(format!("Pago: {}\n", mp).as_bytes());
+    #[cfg(target_os = "linux")]
+    {
+        let output = std::process::Command::new("lpstat")
+            .args(["-a"])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let printers: Vec<String> = stdout.lines()
+            .filter(|l| l.starts_with("printer"))
+            .filter_map(|l| l.split_whitespace().nth(1))
+            .map(|s| s.trim_end_matches(':').to_string())
+            .collect();
+        Ok(printers)
     }
-
-    if let Some(notas) = &data.notas {
-        cmd.extend_from_slice(format!("Notas: {}\n", notas).as_bytes());
-    }
-
-    cmd.extend_from_slice(b"\n");
-    cmd.extend_from_slice(&[0x1B, 0x61, 0x01]); // Centrar
-    cmd.extend_from_slice(b"Gracias por su visita\n\n\n");
-
-    // Alimentar papel y cortar
-    cmd.extend_from_slice(&[0x1B, 0x64, 0x05]); // Feed 5 líneas
-    cmd.extend_from_slice(&[0x1D, 0x56, 0x00]); // Cortar completo
-
-    cmd
 }
 
 #[tauri::command]
-async fn print_ticket(data: TicketPrintData, puerto: Option<String>) -> Result<String, String> {
-    let port_name = puerto.filter(|p| !p.is_empty()).unwrap_or_else(|| {
-        std::env::var("THERMAL_PRINTER_PORT").unwrap_or_else(|_| {
-            find_printer_port().unwrap_or_else(|| {
-                if cfg!(target_os = "linux") { "/dev/usb/lp0".to_string() } else { "COM3".to_string() }
-            })
-        })
-    });
+async fn print_ticket_system(data: TicketPrintData, printer_name: String) -> Result<String, String> {
+    // Generar texto del ticket
+    let mut ticket_text = String::new();
+    ticket_text.push_str("         CON SAZON\n");
+    ticket_text.push_str("     Casa de Comidas\n\n");
+    ticket_text.push_str(&format!("Fecha: {}\n", data.fecha));
+    ticket_text.push_str(&format!("Hora: {}\n", data.hora));
+    ticket_text.push_str("--------------------------------\n");
+    for item in &data.items {
+        ticket_text.push_str(&format!("{}\n", item.descripcion));
+        ticket_text.push_str(&format!("  {} x {:.2} = {:.2} EUR\n", item.cantidad, item.precio_unitario, item.subtotal));
+    }
+    ticket_text.push_str("--------------------------------\n");
+    ticket_text.push_str(&format!("TOTAL: {:.2} EUR\n", data.total));
+    if let Some(mp) = &data.metodo_pago {
+        ticket_text.push_str(&format!("Pago: {}\n", mp));
+    }
+    ticket_text.push_str("\nGracias por su visita\n\n\n");
 
-    let mut port = serialport::new(&port_name, 9600)
-        .timeout(std::time::Duration::from_secs(3))
-        .open()
-        .map_err(|e| format!("No se pudo abrir la impresora {}: {}", port_name, e))?;
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-    let commands = build_ticket_escpos(&data);
-    port.write_all(&commands).map_err(|e| format!("Error imprimiendo: {}", e))?;
-    port.flush().map_err(|e| format!("Error flush: {}", e))?;
+        // Guardar en archivo temporal
+        let tmp_path = std::env::temp_dir().join("con_sazon_ticket.txt");
+        std::fs::write(&tmp_path, &ticket_text).map_err(|e| e.to_string())?;
 
-    println!("[Printer] Ticket enviado a {}", port_name);
-    Ok(format!("Ticket impreso en {}", port_name))
+        // Imprimir usando PowerShell
+        let escaped_path = tmp_path.to_string_lossy().replace('\'', "''");
+        let escaped_printer = printer_name.replace('\'', "''");
+        let ps_script = format!(
+            "Get-Content -Path '{}' | Out-Printer -Name '{}'",
+            escaped_path, escaped_printer
+        );
+        let output = std::process::Command::new("powershell")
+            .args(["-Command", &ps_script])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        // Limpiar archivo temporal
+        let _ = std::fs::remove_file(&tmp_path);
+
+        if output.status.success() {
+            Ok(format!("✓ Ticket enviado a {}", printer_name))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Error imprimiendo: {}", stderr))
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let tmp_path = std::env::temp_dir().join("con_sazon_ticket.txt");
+        std::fs::write(&tmp_path, &ticket_text).map_err(|e| e.to_string())?;
+        let output = std::process::Command::new("lp")
+            .args(["-d", &printer_name, tmp_path.to_str().unwrap_or("")])
+            .output()
+            .map_err(|e| e.to_string())?;
+        let _ = std::fs::remove_file(&tmp_path);
+        if output.status.success() {
+            Ok(format!("✓ Ticket enviado a {}", printer_name))
+        } else {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            Err(format!("Error imprimiendo: {}", stderr))
+        }
+    }
 }
 
 #[tauri::command]
 async fn test_thermal_printer(puerto: Option<String>) -> Result<String, String> {
-    let port_name = puerto.filter(|p| !p.is_empty()).unwrap_or_else(|| {
-        std::env::var("THERMAL_PRINTER_PORT").unwrap_or_else(|_| {
-            find_printer_port().unwrap_or_else(|| {
-                if cfg!(target_os = "linux") { "/dev/usb/lp0".to_string() } else { "COM3".to_string() }
-            })
-        })
-    });
-
-    let mut port = serialport::new(&port_name, 9600)
-        .timeout(std::time::Duration::from_secs(2))
-        .open()
-        .map_err(|e| format!("No se pudo abrir {}: {}", port_name, e))?;
-
-    // Enviar solo inicialización (ESC @) para verificar conexión
-    let init: [u8; 2] = [0x1B, 0x40];
-    port.write_all(&init).map_err(|e| format!("Error: {}", e))?;
-    port.flush().map_err(|e| format!("Error: {}", e))?;
-
-    Ok(format!("✓ Conexión exitosa con {}", port_name))
+    let printers = list_system_printers().await?;
+    if printers.is_empty() {
+        return Err("No se encontraron impresoras instaladas en el sistema".to_string());
+    }
+    let printer_name = puerto.unwrap_or_else(|| printers[0].clone());
+    let test_data = TicketPrintData {
+        fecha: chrono::Local::now().format("%Y-%m-%d").to_string(),
+        hora: chrono::Local::now().format("%H:%M:%S").to_string(),
+        total: 0.0,
+        items: vec![TicketPrintItem {
+            descripcion: "TEST DE IMPRESIÓN".to_string(),
+            cantidad: 1,
+            precio_unitario: 0.0,
+            subtotal: 0.0,
+        }],
+        metodo_pago: Some("test".to_string()),
+        notas: Some("Impresión de prueba".to_string()),
+    };
+    print_ticket_system(test_data, printer_name).await
 }
 
 // ========================================
@@ -4122,7 +4143,8 @@ pub fn run() {
             open_cash_drawer,
             test_cash_drawer,
             list_serial_ports,
-            print_ticket,
+            list_system_printers,
+            print_ticket_system,
             test_thermal_printer,
         ])
         .run(tauri::generate_context!())
