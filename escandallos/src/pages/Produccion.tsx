@@ -61,6 +61,7 @@ export default function Produccion() {
   const [printData, setPrintData] = useState<EtiquetaData | null>(null);
 
   const LABEL_SIZES = [
+    { label: "50 x 80 mm (Labelife)", w: 50, h: 80 },
     { label: "100 x 62 mm (Brother QL)", w: 100, h: 62 },
     { label: "62 x 29 mm (Brother QL)", w: 62, h: 29 },
     { label: "62 x 100 mm (Brother QL)", w: 62, h: 100 },
@@ -148,7 +149,7 @@ export default function Produccion() {
 
   const handlePrintEtiqueta = async (prodId: number, e: React.MouseEvent) => {
     e.stopPropagation();
-    setPrintModal({ prodId, width: 100, height: 62, orientation: "landscape", custom: false });
+    setPrintModal({ prodId, width: 50, height: 80, orientation: "portrait", custom: false });
     try {
       const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
       setPrintData(data);
@@ -159,8 +160,8 @@ export default function Produccion() {
     if (!printModal) return;
     try {
       const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: printModal.prodId });
-      // Generar PDF y abrirlo en el visor del sistema
       await exportEtiquetaPDF(data, printModal.width, printModal.height, printModal.orientation);
+      alert("PDF generado.\n\nSiguiente paso:\n1. Abre Labelife 5\n2. Pulsa 'Importar archivo'\n3. Selecciona el archivo etiqueta_" + data.lote_producto + ".pdf\n4. Configura tamaño " + printModal.width + "x" + printModal.height + "mm\n5. Imprime");
     } catch (err) { alert("Error generando etiqueta: " + err); }
     setPrintModal(null);
   };
