@@ -679,10 +679,8 @@ const ALLERGEN_MAP: Record<string, string> = {
   moluscos: "Moluscos",
 };
 
-export async function exportEtiquetaPDF(data: EtiquetaData) {
-  const labelW = 100;
-  const labelH = 62;
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [labelW, labelH] });
+export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100, labelH: number = 62, orientation: "landscape" | "portrait" = "landscape") {
+  const doc = new jsPDF({ orientation, unit: "mm", format: [labelW, labelH] });
 
   const ml = 3;
   const mr = 3;
@@ -780,10 +778,8 @@ export async function exportEtiquetaPDF(data: EtiquetaData) {
   }
 }
 
-export async function printEtiquetaPDF(data: EtiquetaData) {
-  const labelW = 100;
-  const labelH = 62;
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [labelW, labelH] });
+export async function printEtiquetaPDF(data: EtiquetaData, labelW: number = 100, labelH: number = 62, orientation: "landscape" | "portrait" = "landscape") {
+  const doc = new jsPDF({ orientation, unit: "mm", format: [labelW, labelH] });
 
   const ml = 3;
   const mr = 3;

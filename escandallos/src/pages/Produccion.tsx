@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Trash2, X, Tag } from "lucide-react";
+import { Plus, Trash2, X, Tag, Printer } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import SearchableSelect from "../components/SearchableSelect";
 import DatePicker, { registerLocale } from "react-datepicker";
@@ -57,6 +57,16 @@ export default function Produccion() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [printModal, setPrintModal] = useState<{ prodId: number; width: number; height: number; orientation: "landscape" | "portrait" } | null>(null);
+
+  const LABEL_SIZES = [
+    { label: "100 x 62 mm (Brother QL)", w: 100, h: 62 },
+    { label: "62 x 29 mm (Brother QL)", w: 62, h: 29 },
+    { label: "62 x 100 mm (Brother QL)", w: 62, h: 100 },
+    { label: "100 x 150 mm", w: 100, h: 150 },
+    { label: "A6 (105 x 148 mm)", w: 105, h: 148 },
+    { label: "Personalizado", w: 0, h: 0 },
+  ];
 
   const loadProduccion = async () => {
     try { setProducciones(await invoke("get_produccion", { fechaDesde: fechaDesde, fechaHasta: fechaHasta })); } catch (e) { console.error(e); }
@@ -137,10 +147,16 @@ export default function Produccion() {
 
   const handlePrintEtiqueta = async (prodId: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    setPrintModal({ prodId, width: 100, height: 62, orientation: "landscape" });
+  };
+
+  const confirmPrint = async () => {
+    if (!printModal) return;
     try {
-      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
-      await printEtiquetaPDF(data);
+      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: printModal.prodId });
+      await printEtiquetaPDF(data, printModal.width, printModal.height, printModal.orientation);
     } catch (err) { alert("Error imprimiendo etiqueta: " + err); }
+    setPrintModal(null);
   };
 
   return (
@@ -314,6 +330,87 @@ export default function Produccion() {
           )}
         </div>
       </>
+
+    {/* Modal impresión etiqueta */}
+    {printModal && (
+      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <h2 className="text-lg font-semibold">Imprimir etiqueta</h2>
+            <button onClick={() => setPrintModal(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+          </div>
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño de etiqueta</label>
+              <select
+                value={printModal.width === 0 ? "custom" : `${printModal.width}x${printModal.height}`}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "custom") {
+                    setPrintModal({ ...printModal, width: 50, height: 50 });
+                  } else {
+                    const [w, h] = val.split("x").map(Number);
+                    setPrintModal({ ...printModal, width: w, height: h });
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {LABEL_SIZES.map(s => (
+                  <option key={s.label} value={s.w === 0 ? "custom" : `${s.w}x${s.h}`}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            {printModal.width === 50 && printModal.height === 50 && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ancho (mm)</label>
+                  <input type="number" min="10" max="200" value={printModal.width}
+                    onChange={(e) => setPrintModal({ ...printModal, width: parseInt(e.target.value) || 50 })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Alto (mm)</label>
+                  <input type="number" min="10" max="300" value={printModal.height}
+                    onChange={(e) => setPrintModal({ ...printModal, height: parseInt(e.target.value) || 50 })}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2" />
+                </div>
+              </div>
+            )}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Orientación</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPrintModal({ ...printModal, orientation: "landscape" })}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    printModal.orientation === "landscape"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  📐 Horizontal ({printModal.width}x{printModal.height})
+                </button>
+                <button
+                  onClick={() => setPrintModal({ ...printModal, orientation: "portrait" })}
+                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    printModal.orientation === "portrait"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
+                  }`}
+                >
+                  📱 Vertical ({printModal.height}x{printModal.width})
+                </button>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button onClick={() => setPrintModal(null)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={confirmPrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                <Printer size={16} /> Imprimir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
     </div>
   );
 }
