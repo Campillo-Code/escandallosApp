@@ -3809,6 +3809,106 @@ async fn list_serial_ports() -> Result<Vec<String>, String> {
 }
 
 // ========================================
+// IMPRESORA TÉRMICA - ESC/POS
+// ========================================
+
+#[derive(Debug, Deserialize)]
+pub struct TicketPrintData {
+    pub fecha: String,
+    pub hora: String,
+    pub total: f64,
+    pub items: Vec<TicketPrintItem>,
+    pub metodo_pago: Option<String>,
+    pub notas: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TicketPrintItem {
+    pub descripcion: String,
+    pub cantidad: i64,
+    pub precio_unitario: f64,
+    pub subtotal: f64,
+}
+
+fn build_ticket_escpos(data: &TicketPrintData) -> Vec<u8> {
+    let mut cmd: Vec<u8> = Vec::new();
+
+    // Inicializar impresora
+    cmd.extend_from_slice(&[0x1B, 0x40]);
+
+    // Tamaño de texto normal
+    cmd.extend_from_slice(&[0x1B, 0x21, 0x00]);
+
+    // Centrar
+    cmd.extend_from_slice(&[0x1B, 0x61, 0x01]);
+    cmd.extend_from_slice(b"CON SAZON\n");
+    cmd.extend_from_slice(b"Casa de Comidas\n\n");
+
+    // Izquierda
+    cmd.extend_from_slice(&[0x1B, 0x61, 0x00]);
+    cmd.extend_from_slice(format!("Fecha: {}\n", data.fecha).as_bytes());
+    cmd.extend_from_slice(format!("Hora: {}\n", data.hora).as_bytes());
+    cmd.extend_from_slice(b"--------------------------------\n");
+
+    // Items
+    for item in &data.items {
+        let nombre = if item.descripcion.len() > 24 {
+            format!("{}...", &item.descripcion[..21])
+        } else {
+            item.descripcion.clone()
+        };
+        cmd.extend_from_slice(format!("{}\n", nombre).as_bytes());
+        cmd.extend_from_slice(format!("  {} x {:.2} = {:.2} EUR\n", item.cantidad, item.precio_unitario, item.subtotal).as_bytes());
+    }
+
+    cmd.extend_from_slice(b"--------------------------------\n");
+
+    // Total en negrita
+    cmd.extend_from_slice(&[0x1B, 0x45, 0x01]); // Negrita ON
+    cmd.extend_from_slice(format!("TOTAL: {:.2} EUR\n", data.total).as_bytes());
+    cmd.extend_from_slice(&[0x1B, 0x45, 0x00]); // Negrita OFF
+
+    if let Some(mp) = &data.metodo_pago {
+        cmd.extend_from_slice(format!("Pago: {}\n", mp).as_bytes());
+    }
+
+    if let Some(notas) = &data.notas {
+        cmd.extend_from_slice(format!("Notas: {}\n", notas).as_bytes());
+    }
+
+    cmd.extend_from_slice(b"\n");
+    cmd.extend_from_slice(&[0x1B, 0x61, 0x01]); // Centrar
+    cmd.extend_from_slice(b"Gracias por su visita\n\n\n");
+
+    // Alimentar papel y cortar
+    cmd.extend_from_slice(&[0x1B, 0x64, 0x05]); // Feed 5 líneas
+    cmd.extend_from_slice(&[0x1D, 0x56, 0x00]); // Cortar completo
+
+    cmd
+}
+
+#[tauri::command]
+async fn print_ticket(data: TicketPrintData, puerto: Option<String>) -> Result<String, String> {
+    let port_name = puerto.unwrap_or_else(|| {
+        std::env::var("THERMAL_PRINTER_PORT").unwrap_or_else(|_| {
+            if cfg!(target_os = "linux") { "/dev/usb/lp0".to_string() } else { "COM5".to_string() }
+        })
+    });
+
+    let mut port = serialport::new(&port_name, 9600)
+        .timeout(std::time::Duration::from_secs(3))
+        .open()
+        .map_err(|e| format!("No se pudo abrir la impresora {}: {}", port_name, e))?;
+
+    let commands = build_ticket_escpos(&data);
+    port.write_all(&commands).map_err(|e| format!("Error imprimiendo: {}", e))?;
+    port.flush().map_err(|e| format!("Error flush: {}", e))?;
+
+    println!("[Printer] Ticket enviado a {}", port_name);
+    Ok(format!("Ticket impreso en {}", port_name))
+}
+
+// ========================================
 // INICIO
 // ========================================
 
@@ -3972,6 +4072,7 @@ pub fn run() {
             open_cash_drawer,
             test_cash_drawer,
             list_serial_ports,
+            print_ticket,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

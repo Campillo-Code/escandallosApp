@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ShoppingCart, Trash2, X, Clock, TrendingUp, FileText } from "lucide-react";
+import { ShoppingCart, Trash2, X, Clock, TrendingUp, FileText, Printer } from "lucide-react";
 
 interface CajaCategoria {
   id: number;
@@ -293,6 +293,27 @@ export default function Caja() {
       loadResumen();
       loadTicketsHoy();
     } catch (e) { setError(String(e)); }
+  };
+
+  const imprimirTicket = async (ticket: CajaTicket) => {
+    try {
+      const items: TicketItem[] = JSON.parse(ticket.items);
+      await invoke("print_ticket", {
+        data: {
+          fecha: ticket.fecha,
+          hora: ticket.hora,
+          total: ticket.total,
+          metodo_pago: ticket.metodo_pago,
+          notas: ticket.notas,
+          items: items.map(i => ({
+            descripcion: i.descripcion,
+            cantidad: i.cantidad,
+            precio_unitario: i.precio_unitario,
+            subtotal: i.subtotal,
+          })),
+        },
+      });
+    } catch (e) { setError("Error imprimiendo: " + String(e)); }
   };
 
   const getMenuPlatos = (catName: string) => {
@@ -738,10 +759,16 @@ export default function Caja() {
                               </span>
                             )}
                           </div>
-                          <button onClick={() => setShowDeleteConfirm(ticket.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar">
-                            <Trash2 size={16} />
-                          </button>
+                          <div className="flex gap-1">
+                            <button onClick={() => imprimirTicket(ticket)}
+                              className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Imprimir ticket">
+                              <Printer size={16} />
+                            </button>
+                            <button onClick={() => setShowDeleteConfirm(ticket.id)}
+                              className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Eliminar">
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
                         </div>
                         <div className="space-y-1">
                           {items.map((item, i) => (
