@@ -38,9 +38,6 @@ export default function MenuEngineering() {
   const counts = { estrella: 0, vaca: 0, enigma: 0, perro: 0 };
   data.forEach(d => { counts[d.categoria as keyof typeof counts]++; });
 
-  const maxX = Math.max(...data.map(d => d.unidades_vendidas), 10);
-  const maxY = Math.max(...data.map(d => d.margen_porcentaje), 40);
-
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-gray-800 mb-6">Menu Engineering</h2>
@@ -104,16 +101,24 @@ export default function MenuEngineering() {
                 <div className="absolute -bottom-5 left-0 text-[10px] text-gray-500 font-medium">Margen ↓</div>
                 <div className="absolute -bottom-5 right-0 text-[10px] text-gray-500 font-medium">Popularidad →</div>
                 {data.length > 0 && data.map((d, i) => {
-                  // X: más ventas = más a la derecha (popularidad alta)
-                  // Y: más margen = más arriba (margen alto)
-                  const xPos = maxX > 0 ? ((d.unidades_vendidas / maxX) * 80) + 10 : 50;
-                  const yPos = maxY > 0 ? (100 - (d.margen_porcentaje / maxY) * 80) - 10 : 50;
-                  // Evitar solapamiento: añadir desplazamiento basado en el índice
-                  const offsetX = ((i % 3) - 1) * 8;
-                  const offsetY = (Math.floor(i / 3) % 3 - 1) * 8;
-                  const clampedX = Math.max(8, Math.min(88, xPos + offsetX));
-                  const clampedY = Math.max(8, Math.min(88, yPos + offsetY));
-                  const catColor = COLORS[d.categoria] || "#888";
+                  // Posicionar según categoría BCG y distribuir dentro del cuadrante
+                  const cat = d.categoria;
+                  // Base position per quadrant (center of each quadrant)
+                  let baseX: number, baseY: number;
+                  switch (cat) {
+                    case "estrella": baseX = 75; baseY = 25; break; // top-right
+                    case "enigma": baseX = 25; baseY = 25; break;   // top-left
+                    case "vaca": baseX = 75; baseY = 75; break;     // bottom-right
+                    default: baseX = 25; baseY = 75; break;         // bottom-left (perro)
+                  }
+                  // Distribuir dentro del cuadrante según valores relativos
+                  const catItems = data.filter(x => x.categoria === cat);
+                  const catIndex = catItems.indexOf(d);
+                  const spreadX = catItems.length > 1 ? ((catIndex % 3) - 1) * 15 : 0;
+                  const spreadY = catItems.length > 1 ? (Math.floor(catIndex / 3) % 2 === 0 ? -8 : 8) : 0;
+                  const clampedX = Math.max(10, Math.min(90, baseX + spreadX));
+                  const clampedY = Math.max(10, Math.min(90, baseY + spreadY));
+                  const catColor = COLORS[cat] || "#888";
                   return (
                     <div
                       key={i}
