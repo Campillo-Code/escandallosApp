@@ -682,88 +682,90 @@ const ALLERGEN_MAP: Record<string, string> = {
 export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100, labelH: number = 62, orientation: "landscape" | "portrait" = "landscape") {
   const doc = new jsPDF({ orientation, unit: "mm", format: [labelW, labelH] });
 
-  // Factor de escala basado en el ancho de referencia (100mm)
-  const scale = Math.min(labelW, labelH) / 62;
-  const s = (n: number) => Math.max(n * scale, n * 0.4);
+  // Escala relativa al tamaño de referencia (100x62)
+  const scaleW = labelW / 100;
+  const scaleH = labelH / 62;
+  const scale = Math.min(scaleW, scaleH);
 
-  const ml = 2;
-  const mr = 2;
+  const ml = Math.max(2, 3 * scale);
+  const mr = ml;
   const cw = labelW - ml - mr;
-  let y = 2;
+  let y = Math.max(1, 2 * scale);
 
   // Header
+  const headerH = Math.max(4, 8 * scale);
   doc.setFillColor(40, 50, 100);
-  doc.rect(0, 0, labelW, s(6), "F");
-  doc.setFontSize(s(5));
+  doc.rect(0, 0, labelW, headerH, "F");
+  doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(255);
-  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, s(4.5), { align: "center" });
-  y = s(9);
+  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, headerH * 0.65, { align: "center" });
+  y = headerH + Math.max(2, 3 * scale);
 
   // Product name
-  doc.setFontSize(s(8));
+  doc.setFontSize(Math.max(5, 10 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0);
   const nombreLines = doc.splitTextToSize(data.receta_nombre, cw);
   doc.text(nombreLines, ml, y);
-  y += nombreLines.length * s(3.5) + s(1.5);
+  y += nombreLines.length * Math.max(2.5, 4 * scale) + Math.max(1, 2 * scale);
 
   // Divider
   doc.setDrawColor(180);
   doc.line(ml, y, labelW - mr, y);
-  y += s(2.5);
+  y += Math.max(1.5, 3 * scale);
 
   // Lot + dates
-  doc.setFontSize(s(5));
+  doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(60);
   doc.text(`Lote: ${data.lote_producto}`, ml, y);
-  y += s(2.5);
+  y += Math.max(2, 3 * scale);
   doc.setFont("helvetica", "normal");
   doc.text(`Elab: ${data.fecha_elaboracion}`, ml, y);
   if (data.fecha_caducidad) {
     doc.text(`Cad: ${data.fecha_caducidad}`, ml + cw / 2, y);
   }
-  y += s(3);
+  y += Math.max(2, 4 * scale);
 
   // Divider
   doc.line(ml, y, labelW - mr, y);
-  y += s(2.5);
+  y += Math.max(1.5, 3 * scale);
 
   // Ingredients
-  doc.setFontSize(s(4));
+  doc.setFontSize(Math.max(2.5, 5 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(60);
   doc.text("INGREDIENTES:", ml, y);
-  y += s(2.5);
+  y += Math.max(1.5, 2.5 * scale);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0);
   const ingText = data.ingredientes.join(", ");
   const ingLines = doc.splitTextToSize(ingText, cw);
   const maxIngLines = 3;
   doc.text(ingLines.slice(0, maxIngLines), ml, y);
-  y += Math.min(ingLines.length, maxIngLines) * s(2.5) + s(1);
+  y += Math.min(ingLines.length, maxIngLines) * Math.max(1.5, 2.5 * scale) + Math.max(0.5, 1 * scale);
 
   // Allergens
   if (data.alergenos.length > 0) {
     doc.setFillColor(255, 240, 240);
-    doc.roundedRect(ml, y - 1, cw, data.alergenos.length > 3 ? s(6) : s(4), 1, 1, "F");
-    doc.setFontSize(s(4.5));
+    doc.roundedRect(ml, y - 1, cw, data.alergenos.length > 3 ? Math.max(3, 8 * scale) : Math.max(2.5, 5.5 * scale), 1, 1, "F");
+    doc.setFontSize(Math.max(2.5, 5.5 * scale));
     doc.setFont("helvetica", "bold");
     doc.setTextColor(180, 0, 0);
     const alergLabels = data.alergenos.map(a => ALLERGEN_MAP[a.toLowerCase()] || a);
-    doc.text("ALÉRGENOS:", ml + 1, y + s(1.5));
+    doc.text("ALÉRGENOS:", ml + 1, y + Math.max(0.5, 1.5 * scale));
     doc.setFont("helvetica", "normal");
     const alergText = alergLabels.join(", ");
     const alergLines = doc.splitTextToSize(alergText, cw - 2);
-    doc.text(alergLines.slice(0, 2), ml + 1, y + s(3.5));
-    y += alergLines.length > 2 ? s(7) : s(5);
+    doc.text(alergLines.slice(0, 2), ml + 1, y + Math.max(2, 4 * scale));
+    y += alergLines.length > 2 ? Math.max(5, 9 * scale) : Math.max(3.5, 6.5 * scale);
   }
 
   // Conservation
   if (data.conservacion) {
-    const bottomY = labelH - s(2);
-    doc.setFontSize(s(4));
+    const bottomY = labelH - Math.max(1, 4 * scale);
+    doc.setFontSize(Math.max(2.5, 5 * scale));
     doc.setFont("helvetica", "italic");
     doc.setTextColor(100);
     doc.text(`Conservar: ${data.conservacion}`, ml, bottomY);
@@ -785,79 +787,81 @@ export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100
 export async function printEtiquetaPDF(data: EtiquetaData, labelW: number = 100, labelH: number = 62, orientation: "landscape" | "portrait" = "landscape") {
   const doc = new jsPDF({ orientation, unit: "mm", format: [labelW, labelH] });
 
-  const scale = Math.min(labelW, labelH) / 62;
-  const s = (n: number) => Math.max(n * scale, n * 0.4);
+  const scaleW = labelW / 100;
+  const scaleH = labelH / 62;
+  const scale = Math.min(scaleW, scaleH);
 
-  const ml = 2;
-  const mr = 2;
+  const ml = Math.max(2, 3 * scale);
+  const mr = ml;
   const cw = labelW - ml - mr;
-  let y = 2;
+  let y = Math.max(1, 2 * scale);
 
+  const headerH = Math.max(4, 8 * scale);
   doc.setFillColor(40, 50, 100);
-  doc.rect(0, 0, labelW, s(6), "F");
-  doc.setFontSize(s(5));
+  doc.rect(0, 0, labelW, headerH, "F");
+  doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(255);
-  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, s(4.5), { align: "center" });
-  y = s(9);
+  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, headerH * 0.65, { align: "center" });
+  y = headerH + Math.max(2, 3 * scale);
 
-  doc.setFontSize(s(8));
+  doc.setFontSize(Math.max(5, 10 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0);
   const nombreLines = doc.splitTextToSize(data.receta_nombre, cw);
   doc.text(nombreLines, ml, y);
-  y += nombreLines.length * s(3.5) + s(1.5);
+  y += nombreLines.length * Math.max(2.5, 4 * scale) + Math.max(1, 2 * scale);
 
   doc.setDrawColor(180);
   doc.line(ml, y, labelW - mr, y);
-  y += s(2.5);
+  y += Math.max(1.5, 3 * scale);
 
-  doc.setFontSize(s(5));
+  doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(60);
   doc.text(`Lote: ${data.lote_producto}`, ml, y);
-  y += s(2.5);
+  y += Math.max(2, 3 * scale);
   doc.setFont("helvetica", "normal");
   doc.text(`Elab: ${data.fecha_elaboracion}`, ml, y);
   if (data.fecha_caducidad) {
     doc.text(`Cad: ${data.fecha_caducidad}`, ml + cw / 2, y);
   }
-  y += s(3);
+  y += Math.max(2, 4 * scale);
 
   doc.line(ml, y, labelW - mr, y);
-  y += s(2.5);
+  y += Math.max(1.5, 3 * scale);
 
-  doc.setFontSize(s(4));
+  doc.setFontSize(Math.max(2.5, 5 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(60);
   doc.text("INGREDIENTES:", ml, y);
-  y += s(2.5);
+  y += Math.max(1.5, 2.5 * scale);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(0);
   const ingText = data.ingredientes.join(", ");
   const ingLines = doc.splitTextToSize(ingText, cw);
   const maxIngLines = 3;
   doc.text(ingLines.slice(0, maxIngLines), ml, y);
-  y += Math.min(ingLines.length, maxIngLines) * s(2.5) + s(1);
+  y += Math.min(ingLines.length, maxIngLines) * Math.max(1.5, 2.5 * scale) + Math.max(0.5, 1 * scale);
 
   if (data.alergenos.length > 0) {
     doc.setFillColor(255, 240, 240);
-    doc.roundedRect(ml, y - 1, cw, data.alergenos.length > 3 ? s(6) : s(4), 1, 1, "F");
-    doc.setFontSize(s(4.5));
+    doc.roundedRect(ml, y - 1, cw, data.alergenos.length > 3 ? Math.max(3, 8 * scale) : Math.max(2.5, 5.5 * scale), 1, 1, "F");
+    doc.setFontSize(Math.max(2.5, 5.5 * scale));
     doc.setFont("helvetica", "bold");
     doc.setTextColor(180, 0, 0);
     const alergLabels = data.alergenos.map(a => ALLERGEN_MAP[a.toLowerCase()] || a);
-    doc.text("ALÉRGENOS:", ml + 1, y + s(1.5));
+    doc.text("ALÉRGENOS:", ml + 1, y + Math.max(0.5, 1.5 * scale));
     doc.setFont("helvetica", "normal");
     const alergText = alergLabels.join(", ");
     const alergLines = doc.splitTextToSize(alergText, cw - 2);
-    doc.text(alergLines.slice(0, 2), ml + 1, y + s(3.5));
-    y += alergLines.length > 2 ? s(7) : s(5);
+    doc.text(alergLines.slice(0, 2), ml + 1, y + Math.max(2, 4 * scale));
+    y += alergLines.length > 2 ? Math.max(5, 9 * scale) : Math.max(3.5, 6.5 * scale);
   }
 
   if (data.conservacion) {
-    const bottomY = labelH - s(2);
-    doc.setFontSize(s(4));
+    const bottomY = labelH - Math.max(1, 4 * scale);
+    doc.setFontSize(Math.max(2.5, 5 * scale));
     doc.setFont("helvetica", "italic");
     doc.setTextColor(100);
     doc.text(`Conservar: ${data.conservacion}`, ml, bottomY);
