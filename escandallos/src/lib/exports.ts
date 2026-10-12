@@ -692,13 +692,14 @@ export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100
   const cw = labelW - ml - mr;
   let y = Math.max(1, 2 * scale);
 
-  // Header
+  // Header — blanco con borde negro
   const headerH = Math.max(4, 8 * scale);
-  doc.setFillColor(40, 50, 100);
-  doc.rect(0, 0, labelW, headerH, "F");
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.3);
+  doc.rect(0, 0, labelW, headerH, "S");
   doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
-  doc.setTextColor(255);
+  doc.setTextColor(0);
   doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, headerH * 0.65, { align: "center" });
   y = headerH + Math.max(2, 3 * scale);
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Trash2, X, Tag, Printer } from "lucide-react";
+import { Plus, Trash2, X, Tag } from "lucide-react";
 import SearchBar from "../components/SearchBar";
 import SearchableSelect from "../components/SearchableSelect";
 import DatePicker, { registerLocale } from "react-datepicker";
@@ -57,18 +57,6 @@ export default function Produccion() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [printModal, setPrintModal] = useState<{ prodId: number; width: number; height: number; orientation: "landscape" | "portrait"; custom: boolean } | null>(null);
-  const [printData, setPrintData] = useState<EtiquetaData | null>(null);
-
-  const LABEL_SIZES = [
-    { label: "50 x 80 mm (Labelife)", w: 50, h: 80 },
-    { label: "100 x 62 mm (Brother QL)", w: 100, h: 62 },
-    { label: "62 x 29 mm (Brother QL)", w: 62, h: 29 },
-    { label: "62 x 100 mm (Brother QL)", w: 62, h: 100 },
-    { label: "100 x 150 mm", w: 100, h: 150 },
-    { label: "A6 (105 x 148 mm)", w: 105, h: 148 },
-    { label: "Personalizado", w: 0, h: 0 },
-  ];
 
   const loadProduccion = async () => {
     try { setProducciones(await invoke("get_produccion", { fechaDesde: fechaDesde, fechaHasta: fechaHasta })); } catch (e) { console.error(e); }
@@ -145,25 +133,6 @@ export default function Produccion() {
       const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
       await exportEtiquetaPDF(data);
     } catch (err) { alert("Error generando etiqueta: " + err); }
-  };
-
-  const handlePrintEtiqueta = async (prodId: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setPrintModal({ prodId, width: 50, height: 80, orientation: "portrait", custom: false });
-    try {
-      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: prodId });
-      setPrintData(data);
-    } catch (err) { console.error(err); }
-  };
-
-  const confirmPrint = async () => {
-    if (!printModal) return;
-    try {
-      const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: printModal.prodId });
-      await exportEtiquetaPDF(data, printModal.width, printModal.height, printModal.orientation);
-      alert("PDF generado.\n\nSiguiente paso:\n1. Abre Labelife 5\n2. Pulsa 'Importar archivo'\n3. Selecciona el archivo etiqueta_" + data.lote_producto + ".pdf\n4. Configura tamaño " + printModal.width + "x" + printModal.height + "mm\n5. Imprime");
-    } catch (err) { alert("Error generando etiqueta: " + err); }
-    setPrintModal(null);
   };
 
   return (
@@ -307,7 +276,6 @@ export default function Produccion() {
                       <td className="px-4 py-3 text-sm text-gray-600">{p.responsable || "—"}</td>
                       <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
                         <button onClick={(e) => handleEtiqueta(p.id, e)} className="text-green-600 hover:text-green-800 mr-2" title="Guardar etiqueta"><Tag size={15} /></button>
-                        <button onClick={(e) => handlePrintEtiqueta(p.id, e)} className="text-blue-600 hover:text-blue-800 mr-2" title="Imprimir etiqueta">🖨️</button>
                         <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:text-red-800"><Trash2 size={15} /></button>
                       </td>
                     </tr>
@@ -338,136 +306,6 @@ export default function Produccion() {
         </div>
       </>
 
-    {/* Modal impresión etiqueta */}
-    {printModal && (
-      <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-          <div className="flex items-center justify-between px-6 py-4 border-b">
-            <h2 className="text-lg font-semibold">Imprimir etiqueta</h2>
-            <button onClick={() => setPrintModal(null)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
-          </div>
-          <div className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño de etiqueta</label>
-              <select
-                value={printModal.custom ? "custom" : `${printModal.width}x${printModal.height}`}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "custom") {
-                    setPrintModal({ ...printModal, custom: true, width: 50, height: 50 });
-                  } else {
-                    const [w, h] = val.split("x").map(Number);
-                    setPrintModal({ ...printModal, custom: false, width: w, height: h });
-                  }
-                }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              >
-                {LABEL_SIZES.map(s => (
-                  <option key={s.label} value={s.w === 0 ? "custom" : `${s.w}x${s.h}`}>{s.label}</option>
-                ))}
-              </select>
-            </div>
-            {printModal.custom && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ancho (mm)</label>
-                  <input type="number" min="10" max="200" value={printModal.width}
-                    onChange={(e) => setPrintModal({ ...printModal, width: parseInt(e.target.value) || 10 })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Alto (mm)</label>
-                  <input type="number" min="10" max="300" value={printModal.height}
-                    onChange={(e) => setPrintModal({ ...printModal, height: parseInt(e.target.value) || 10 })}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2" />
-                </div>
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Orientación</label>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPrintModal({ ...printModal, orientation: "landscape" })}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    printModal.orientation === "landscape"
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
-                  }`}
-                >
-                  📐 Horizontal ({printModal.width}x{printModal.height})
-                </button>
-                <button
-                  onClick={() => setPrintModal({ ...printModal, orientation: "portrait" })}
-                  className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                    printModal.orientation === "portrait"
-                      ? "bg-blue-600 text-white border-blue-600"
-                      : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"
-                  }`}
-                >
-                  📱 Vertical ({printModal.height}x{printModal.width})
-                </button>
-              </div>
-            </div>
-            {/* Previsualización */}
-            {printData && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Previsualización</label>
-                <div className="border border-gray-300 rounded-lg p-2 bg-gray-50 flex items-center justify-center" style={{ minHeight: "180px" }}>
-                  <div
-                    className="bg-white border border-gray-400 shadow-sm overflow-hidden"
-                    style={{
-                      width: `${Math.min(printModal.orientation === "landscape" ? printModal.width : printModal.height, 280)}px`,
-                      height: `${Math.min(printModal.orientation === "landscape" ? printModal.height : printModal.width, 160)}px`,
-                      fontSize: "6px",
-                      lineHeight: "1.3",
-                    }}
-                  >
-                    {/* Header */}
-                    <div className="text-white text-center font-bold py-1" style={{ background: "rgb(40,50,100)", fontSize: "5px" }}>
-                      ELABORADO EN VIVIENDA PARTICULAR
-                    </div>
-                    <div className="px-2 py-1">
-                      {/* Nombre */}
-                      <div className="font-bold text-gray-900 truncate" style={{ fontSize: "8px" }}>{printData.receta_nombre}</div>
-                      {/* Lote y fechas */}
-                      <div className="text-gray-600 mt-1">
-                        <div>Lote: {printData.lote_producto}</div>
-                        <div>Elab: {printData.fecha_elaboracion}</div>
-                        {printData.fecha_caducidad && <div>Cad: {printData.fecha_caducidad}</div>}
-                      </div>
-                      <hr className="my-1 border-gray-300" />
-                      {/* Ingredientes */}
-                      <div className="text-gray-500 font-bold" style={{ fontSize: "5px" }}>INGREDIENTES:</div>
-                      <div className="text-gray-700">{printData.ingredientes.join(", ")}</div>
-                      {/* Alérgenos */}
-                      {printData.alergenos.length > 0 && (
-                        <div className="mt-1 px-1 py-0.5 bg-red-50 border border-red-200 rounded" style={{ fontSize: "5px" }}>
-                          <span className="font-bold text-red-700">ALÉRGENOS: </span>
-                          <span className="text-red-600">{printData.alergenos.join(", ")}</span>
-                        </div>
-                      )}
-                      {/* Conservación */}
-                      {printData.conservacion && (
-                        <div className="mt-1 text-gray-500 italic" style={{ fontSize: "5px" }}>
-                          Conservar: {printData.conservacion}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 mt-1 text-center">{printModal.width}x{printModal.height}mm — {printModal.orientation === "landscape" ? "Horizontal" : "Vertical"}</p>
-              </div>
-            )}
-            <div className="flex justify-end gap-3 pt-2">
-              <button onClick={() => setPrintModal(null)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button onClick={confirmPrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                <Printer size={16} /> Generar e imprimir
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )}
     </div>
   );
 }
