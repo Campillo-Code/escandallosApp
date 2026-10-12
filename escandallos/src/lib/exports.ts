@@ -781,6 +781,13 @@ export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100
     const blob = doc.output("blob");
     const buffer = await blob.arrayBuffer();
     await writeFile(path, new Uint8Array(buffer));
+    // Abrir el PDF automáticamente
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(`file://${path}`);
+    } catch (e) {
+      console.warn("No se pudo abrir el PDF automáticamente:", e);
+    }
   }
 }
 

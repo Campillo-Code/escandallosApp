@@ -7,7 +7,7 @@ import DatePicker, { registerLocale } from "react-datepicker";
 import { es } from "date-fns/locale/es";
 import "react-datepicker/dist/react-datepicker.css";
 import DateInput from "../components/DateInput";
-import { exportEtiquetaPDF, printEtiquetaPDF, EtiquetaData } from "../lib/exports";
+import { exportEtiquetaPDF, EtiquetaData } from "../lib/exports";
 
 registerLocale("es", es);
 
@@ -159,8 +159,9 @@ export default function Produccion() {
     if (!printModal) return;
     try {
       const data = await invoke<EtiquetaData>("get_etiqueta_data", { produccionId: printModal.prodId });
-      await printEtiquetaPDF(data, printModal.width, printModal.height, printModal.orientation);
-    } catch (err) { alert("Error imprimiendo etiqueta: " + err); }
+      // Generar PDF y abrirlo en el visor del sistema
+      await exportEtiquetaPDF(data, printModal.width, printModal.height, printModal.orientation);
+    } catch (err) { alert("Error generando etiqueta: " + err); }
     setPrintModal(null);
   };
 
@@ -459,7 +460,7 @@ export default function Produccion() {
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setPrintModal(null)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
               <button onClick={confirmPrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
-                <Printer size={16} /> Imprimir
+                <Printer size={16} /> Generar e imprimir
               </button>
             </div>
           </div>
