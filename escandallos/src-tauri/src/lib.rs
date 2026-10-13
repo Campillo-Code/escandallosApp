@@ -39,6 +39,7 @@ pub struct Ingrediente {
     pub alergenos: Option<String>,
     pub precio: Option<f64>,
     pub proveedor_nombre: Option<String>,
+    pub tipo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,6 +49,7 @@ pub struct IngredienteInput {
     pub categoria: Option<String>,
     pub alergenos: Option<String>,
     pub precio: Option<f64>,
+    pub tipo: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -158,14 +160,17 @@ async fn delete_proveedor(id: i64) -> Result<(), String> {
 // ========================================
 
 #[tauri::command]
-async fn get_ingredientes() -> Result<Vec<Ingrediente>, String> {
+async fn get_ingredientes(tipo: Option<String>) -> Result<Vec<Ingrediente>, String> {
     let pool = &db::get_pool();
-    let rows = sqlx::query(
-        "SELECT i.id, i.nombre, i.unidad_base, i.categoria, i.alergenos, CAST(ip.precio_por_unidad_base AS DOUBLE) AS precio, p.nombre AS proveedor_nombre FROM ingredientes i LEFT JOIN ingrediente_precios ip ON i.id = ip.ingrediente_id AND ip.es_predeterminado = 1 LEFT JOIN proveedores p ON ip.proveedor_id = p.id ORDER BY i.nombre"
-    )
-        .fetch_all(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let sql = match &tipo {
+        Some(t) => "SELECT i.id, i.nombre, i.unidad_base, i.categoria, i.alergenos, CAST(ip.precio_por_unidad_base AS DOUBLE) AS precio, p.nombre AS proveedor_nombre, i.tipo FROM ingredientes i LEFT JOIN ingrediente_precios ip ON i.id = ip.ingrediente_id AND ip.es_predeterminado = 1 LEFT JOIN proveedores p ON ip.proveedor_id = p.id WHERE i.tipo = ? ORDER BY i.nombre",
+        None => "SELECT i.id, i.nombre, i.unidad_base, i.categoria, i.alergenos, CAST(ip.precio_por_unidad_base AS DOUBLE) AS precio, p.nombre AS proveedor_nombre, i.tipo FROM ingredientes i LEFT JOIN ingrediente_precios ip ON i.id = ip.ingrediente_id AND ip.es_predeterminado = 1 LEFT JOIN proveedores p ON ip.proveedor_id = p.id ORDER BY i.nombre",
+    };
+    let mut q = sqlx::query(sql);
+    if let Some(t) = &tipo {
+        q = q.bind(t);
+    }
+    let rows = q.fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<Ingrediente> = rows.iter().map(|r| {
         Ingrediente {
             id: r.try_get("id").unwrap_or_default(),
@@ -175,6 +180,7 @@ async fn get_ingredientes() -> Result<Vec<Ingrediente>, String> {
             alergenos: r.try_get("alergenos").ok().flatten(),
             precio: r.try_get::<f64, _>("precio").ok(),
             proveedor_nombre: r.try_get("proveedor_nombre").ok().flatten(),
+            tipo: r.try_get("tipo").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -184,12 +190,13 @@ async fn get_ingredientes() -> Result<Vec<Ingrediente>, String> {
 async fn create_ingrediente(input: IngredienteInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO ingredientes (nombre, unidad_base, categoria, alergenos) VALUES (?, ?, ?, ?)"
+        "INSERT INTO ingredientes (nombre, unidad_base, categoria, alergenos, tipo) VALUES (?, ?, ?, ?, ?)"
     )
     .bind(&input.nombre)
     .bind(&input.unidad_base)
     .bind(&input.categoria)
     .bind(&input.alergenos)
+    .bind(input.tipo.as_deref().unwrap_or("ingrediente"))
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -218,12 +225,13 @@ async fn create_ingrediente(input: IngredienteInput) -> Result<i64, String> {
 async fn update_ingrediente(id: i64, input: IngredienteInput) -> Result<(), String> {
     let pool = &db::get_pool();
     sqlx::query(
-        "UPDATE ingredientes SET nombre = ?, unidad_base = ?, categoria = ?, alergenos = ? WHERE id = ?"
+        "UPDATE ingredientes SET nombre = ?, unidad_base = ?, categoria = ?, alergenos = ?, tipo = ? WHERE id = ?"
     )
     .bind(&input.nombre)
     .bind(&input.unidad_base)
     .bind(&input.categoria)
     .bind(&input.alergenos)
+    .bind(input.tipo.as_deref().unwrap_or("ingrediente"))
     .bind(id)
     .execute(pool)
     .await
@@ -413,6 +421,7 @@ pub struct RecetaIngrediente {
     pub merma_porcentaje: f64,
     pub notas: Option<String>,
     pub orden: i32,
+    pub tipo_envase: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -428,6 +437,7 @@ pub struct RecetaIngredienteConNombre {
     pub merma_porcentaje: f64,
     pub notas: Option<String>,
     pub orden: Option<i32>,
+    pub tipo_envase: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -440,12 +450,13 @@ pub struct RecetaIngredienteInput {
     pub merma_porcentaje: Option<f64>,
     pub notas: Option<String>,
     pub orden: Option<i32>,
+    pub tipo_envase: Option<String>,
 }
 
 #[tauri::command]
 async fn get_receta_ingredientes(receta_id: i64) -> Result<Vec<RecetaIngredienteConNombre>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT ri.id, ri.receta_id, ri.ingrediente_id, i.nombre AS ingrediente_nombre, ri.sub_receta_id, sr.nombre AS sub_receta_nombre, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje, ri.notas, ri.orden FROM receta_ingredientes ri LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id LEFT JOIN recetas sr ON ri.sub_receta_id = sr.id WHERE ri.receta_id = ? ORDER BY ri.orden";
+    let sql = "SELECT ri.id, ri.receta_id, ri.ingrediente_id, i.nombre AS ingrediente_nombre, ri.sub_receta_id, sr.nombre AS sub_receta_nombre, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje, ri.notas, ri.orden, ri.tipo_envase FROM receta_ingredientes ri LEFT JOIN ingredientes i ON ri.ingrediente_id = i.id LEFT JOIN recetas sr ON ri.sub_receta_id = sr.id WHERE ri.receta_id = ? ORDER BY ri.orden";
     let rows = sqlx::query(sql).bind(receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<RecetaIngredienteConNombre> = rows.iter().map(|r| {
         RecetaIngredienteConNombre {
@@ -460,6 +471,7 @@ async fn get_receta_ingredientes(receta_id: i64) -> Result<Vec<RecetaIngrediente
             merma_porcentaje: r.try_get::<f64, _>("merma_porcentaje").unwrap_or(0.0),
             notas: r.try_get("notas").ok().flatten(),
             orden: r.try_get("orden").ok().flatten(),
+            tipo_envase: r.try_get("tipo_envase").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -469,7 +481,7 @@ async fn get_receta_ingredientes(receta_id: i64) -> Result<Vec<RecetaIngrediente
 async fn add_receta_ingrediente(input: RecetaIngredienteInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO receta_ingredientes (receta_id, ingrediente_id, sub_receta_id, cantidad, unidad, merma_porcentaje, notas, orden) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO receta_ingredientes (receta_id, ingrediente_id, sub_receta_id, cantidad, unidad, merma_porcentaje, notas, orden, tipo_envase) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(input.receta_id)
     .bind(input.ingrediente_id)
@@ -479,6 +491,7 @@ async fn add_receta_ingrediente(input: RecetaIngredienteInput) -> Result<i64, St
     .bind(input.merma_porcentaje.unwrap_or(0.0))
     .bind(&input.notas)
     .bind(input.orden.unwrap_or(0))
+    .bind(&input.tipo_envase)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -590,6 +603,8 @@ pub struct CosteReceta {
     pub precio_venta_entero: Option<f64>,
     pub base_imponible: Option<f64>,
     pub cuota_iva: Option<f64>,
+    pub coste_envase_encargo: f64,
+    pub coste_envase_porcion: f64,
 }
 
 #[tauri::command]
@@ -627,14 +642,14 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
 
     // Fetch ALL receta_ingredientes (regular ingredients + sub-recipes)
     let all_ri_rows = sqlx::query(
-        "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje FROM receta_ingredientes ri WHERE ri.receta_id = ?"
+        "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma_porcentaje, ri.tipo_envase FROM receta_ingredientes ri WHERE ri.receta_id = ?"
     )
     .bind(receta_id)
     .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let all_ri: Vec<(i64, Option<i64>, Option<i64>, f64, String, f64)> = all_ri_rows.iter().map(|r| {
+    let all_ri: Vec<(i64, Option<i64>, Option<i64>, f64, String, f64, Option<String>)> = all_ri_rows.iter().map(|r| {
         (
             r.try_get("id").unwrap_or_default(),
             r.try_get("ingrediente_id").ok().flatten(),
@@ -642,11 +657,14 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
             r.try_get::<f64, _>("cantidad").unwrap_or(0.0),
             r.try_get("unidad").unwrap_or_default(),
             r.try_get::<f64, _>("merma_porcentaje").unwrap_or(0.0),
+            r.try_get("tipo_envase").ok().flatten(),
         )
     }).collect();
 
     let mut ingredientes: Vec<CosteIngrediente> = Vec::new();
     let mut coste_total: f64 = 0.0;
+    let mut coste_envase_porcion: f64 = 0.0;
+    let mut coste_envase_encargo: f64 = 0.0;
 
     for ri in all_ri {
         let ingrediente_id = ri.1;
@@ -654,6 +672,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
         let cantidad = ri.3;
         let unidad = ri.4;
         let merma = ri.5;
+        let tipo_envase = ri.6;
 
         if let Some(sub_rid) = sub_receta_id {
             // Sub-recipe: first get name and porciones
@@ -717,7 +736,12 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
                 cantidad_base * pu * (1.0 + merma / 100.0)
             } else { 0.0 };
 
-            coste_total += coste;
+            // Separar envases: porción se suma por porción, encargo se suma al total encargo
+            match tipo_envase.as_deref() {
+                Some("porcion") => coste_envase_porcion += coste,
+                Some("encargo") => coste_envase_encargo += coste,
+                _ => coste_total += coste,
+            }
 
             let precio_por_unidad_receta = precio_unitario.map(|pu| {
                 if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { pu * 1000.0 }
@@ -734,7 +758,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
     }
 
     let porciones = receta.porciones as f64;
-    let coste_porcion = if porciones > 0.0 { coste_total / porciones } else { coste_total };
+    let coste_porcion = if porciones > 0.0 { coste_total / porciones + coste_envase_porcion } else { coste_total + coste_envase_porcion };
 
     let iva = receta.iva_porcentaje.unwrap_or(10.0);
 
@@ -783,6 +807,8 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
         precio_venta_entero: receta.precio_venta_entero,
         base_imponible,
         cuota_iva,
+        coste_envase_encargo,
+        coste_envase_porcion,
     })
 }
 
@@ -1989,19 +2015,21 @@ async fn get_ventas_por_plato(fecha_desde: Option<String>, fecha_hasta: Option<S
 // COSTE HELPER - cálculo correcto con conversiones y sub-recetas
 // ========================================
 
-fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(f64, f64), String>> + Send + '_>> {
+fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(f64, f64, f64), String>> + Send + '_>> {
     Box::pin(async move {
-        // Devuelve (coste_total, coste_porcion)
+        // Devuelve (coste_total, coste_porcion, coste_envase_encargo)
         let receta_row = sqlx::query(
             "SELECT CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?"
         ).bind(receta_id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
         let porciones: f64 = receta_row.and_then(|r| r.try_get::<f64, _>(0).ok()).unwrap_or(1.0);
 
         let ri_rows = sqlx::query(
-            "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma FROM receta_ingredientes ri WHERE ri.receta_id = ?"
+            "SELECT ri.id, ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma, ri.tipo_envase FROM receta_ingredientes ri WHERE ri.receta_id = ?"
         ).bind(receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
 
         let mut coste_total: f64 = 0.0;
+        let mut coste_envase_porcion: f64 = 0.0;
+        let mut coste_envase_encargo: f64 = 0.0;
 
         for row in ri_rows {
             let ingrediente_id: Option<i64> = row.try_get("ingrediente_id").ok().flatten();
@@ -2009,14 +2037,15 @@ fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pi
             let cantidad: f64 = row.try_get::<f64, _>("cantidad").unwrap_or(0.0);
             let unidad: String = row.try_get("unidad").unwrap_or_default();
             let merma: f64 = row.try_get::<f64, _>("merma").unwrap_or(0.0);
+            let tipo_envase: Option<String> = row.try_get("tipo_envase").ok().flatten();
 
             if let Some(sub_rid) = sub_receta_id {
                 // Sub-receta: calcular su coste recursivamente
-                let sub_cost = calcular_coste_receta(pool, sub_rid).await.unwrap_or((0.0, 0.0));
+                let sub_result = calcular_coste_receta(pool, sub_rid).await.unwrap_or((0.0, 0.0, 0.0));
                 let sub_porciones: f64 = sqlx::query_scalar(
                     "SELECT CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?"
                 ).bind(sub_rid).fetch_optional(pool).await.ok().flatten().unwrap_or(1.0);
-                let prop_coste = if sub_porciones > 0.0 { (cantidad / sub_porciones) * sub_cost.0 * (1.0 + merma / 100.0) } else { 0.0 };
+                let prop_coste = if sub_porciones > 0.0 { (cantidad / sub_porciones) * sub_result.0 * (1.0 + merma / 100.0) } else { 0.0 };
                 coste_total += prop_coste;
             } else if let Some(iid) = ingrediente_id {
                 // Ingrediente directo
@@ -2030,13 +2059,18 @@ fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pi
                     else if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { cantidad * 1000.0 }
                     else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { cantidad / 1000.0 }
                     else { cantidad };
-                    coste_total += cantidad_base * precio * (1.0 + merma / 100.0);
+                    let item_cost = cantidad_base * precio * (1.0 + merma / 100.0);
+                    match tipo_envase.as_deref() {
+                        Some("porcion") => coste_envase_porcion += item_cost,
+                        Some("encargo") => coste_envase_encargo += item_cost,
+                        _ => coste_total += item_cost,
+                    }
                 }
             }
         }
 
-        let coste_porcion = if porciones > 0.0 { coste_total / porciones } else { coste_total };
-        Ok((coste_total, coste_porcion))
+        let coste_porcion = if porciones > 0.0 { (coste_total + coste_envase_porcion) / porciones } else { coste_total + coste_envase_porcion };
+        Ok((coste_total + coste_envase_porcion, coste_porcion, coste_envase_encargo))
     })
 }
 
@@ -2118,7 +2152,7 @@ async fn get_menu_engineering(fecha_desde: Option<String>, fecha_hasta: Option<S
 
         // Calculate cost properly using helper
         let coste_porcion: f64 = if receta_id > 0 {
-            calcular_coste_receta(pool, receta_id).await.unwrap_or((0.0, 0.0)).1
+            calcular_coste_receta(pool, receta_id).await.unwrap_or((0.0, 0.0, 0.0)).1
         } else {
             0.0
         };
@@ -2229,7 +2263,7 @@ async fn get_contabilidad(fecha_desde: Option<String>, fecha_hasta: Option<Strin
 
         // Calculate cost properly using helper
         let coste_porcion: f64 = if receta_id > 0 {
-            calcular_coste_receta(pool, receta_id).await.unwrap_or((0.0, 0.0)).1
+            calcular_coste_receta(pool, receta_id).await.unwrap_or((0.0, 0.0, 0.0)).1
         } else {
             0.0
         };

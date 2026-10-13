@@ -23,6 +23,8 @@ interface Ingrediente {
   id: number;
   nombre: string;
   unidad_base: string;
+  tipo: string | null;
+  precio: number | null;
 }
 
 interface Movimiento {
@@ -73,6 +75,11 @@ export default function Inventario() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"stock" | "movimientos">("stock");
   const [searchTerm, setSearchTerm] = useState("");
+  const [tipoFilter, setTipoFilter] = useState<"todos" | "ingrediente" | "envase" | "bebida">("todos");
+  const [envases, setEnvases] = useState<Ingrediente[]>([]);
+  const [bebidas, setBebidas] = useState<Ingrediente[]>([]);
+  const [tipoItemStock, setTipoItemStock] = useState<"ingrediente" | "envase" | "bebida">("ingrediente");
+  const [tipoItemMov, setTipoItemMov] = useState<"ingrediente" | "envase" | "bebida">("ingrediente");
 
   const {
     register: registerStock,
@@ -111,8 +118,14 @@ export default function Inventario() {
 
   const loadIngredientes = async () => {
     try {
-      const data = await invoke<Ingrediente[]>("get_ingredientes");
-      setIngredientes(data);
+      const [ings, envs, bebs] = await Promise.all([
+        invoke<Ingrediente[]>("get_ingredientes", { tipo: "ingrediente" }),
+        invoke<Ingrediente[]>("get_ingredientes", { tipo: "envase" }),
+        invoke<Ingrediente[]>("get_ingredientes", { tipo: "bebida" }),
+      ]);
+      setIngredientes(ings);
+      setEnvases(envs);
+      setBebidas(bebs);
     } catch (e) {
       console.error("Error loading ingredientes:", e);
     }
@@ -194,6 +207,24 @@ export default function Inventario() {
     return found?.color ?? "text-gray-600";
   };
 
+  const handleQuickMovement = async (ingredienteId: number, tipo: string, cantidad: number) => {
+    try {
+      await invoke("add_inventario_movimiento", {
+        input: {
+          ingrediente_id: ingredienteId,
+          tipo,
+          cantidad,
+          referencia: null,
+          albaran_id: null,
+          receta_id: null,
+          notas: "Ajuste rápido",
+        },
+      });
+      loadInventario();
+      loadMovimientos();
+    } catch (e) { alert("Error: " + e); }
+  };
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -226,6 +257,40 @@ export default function Inventario() {
 
       {tab === "stock" && (
         <>
+          {/* Alertas de stock bajo */}
+          {(() => {
+            const bajos = inventario.filter(inv => inv.stock_actual <= inv.stock_minimo);
+            if (bajos.length === 0) return null;
+            return (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={18} className="text-red-500" />
+                  <span className="font-semibold text-red-700">Stock bajo ({bajos.length} artículos)</span>
+                </div>
+                <div className="flex flex-wrap gap-2 max-h-24 overflow-y-auto">
+                  {bajos.slice(0, 20).map(inv => (
+                    <span key={inv.id} className="text-xs px-2 py-1 bg-red-100 text-red-700 rounded-full font-medium">
+                      {inv.ingrediente_nombre} ({inv.stock_actual.toFixed(1)} {inv.unidad})
+                    </span>
+                  ))}
+                  {bajos.length > 20 && (
+                    <span className="text-xs px-2 py-1 text-red-500 font-medium">+{bajos.length - 20} más...</span>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Filtro por tipo */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {[{ key: "todos", label: "Todos" }, { key: "ingrediente", label: "🥕 Ingredientes" }, { key: "envase", label: "📦 Envases" }, { key: "bebida", label: "🥤 Bebidas" }].map(f => (
+              <button key={f.key} onClick={() => setTipoFilter(f.key as any)}
+                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${tipoFilter === f.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+
           <div className="flex justify-end gap-3 mb-4">
             <button
               onClick={() => exportInventarioExcel(inventario)}
@@ -261,16 +326,30 @@ export default function Inventario() {
                   <X size={20} />
                 </button>
               </div>
+              <div className="flex gap-2 mb-4">
+                {[{ k: "ingrediente", l: "🥕 Ingrediente" }, { k: "envase", l: "📦 Envase" }, { k: "bebida", l: "🥤 Bebida" }].map(t => (
+                  <button key={t.k} type="button" onClick={() => { setTipoItemStock(t.k as any); resetStock(); }}
+                    className={`px-3 py-1.5 rounded text-xs font-medium ${tipoItemStock === t.k ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 border"}`}>
+                    {t.l}
+                  </button>
+                ))}
+              </div>
               <form onSubmit={handleSubmitStock(onSubmitStock)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {tipoItemStock === "ingrediente" ? "Ingrediente *" : tipoItemStock === "envase" ? "Envase *" : "Bebida *"}
+                  </label>
                   <Controller
                     control={controlStock}
                     name="ingrediente_id"
-                    rules={{ required: "Selecciona un ingrediente" }}
+                    rules={{ required: "Selecciona un artículo" }}
                     render={({ field }) => (
                       <SearchableSelect
-                        options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                        options={
+                          tipoItemStock === "ingrediente" ? ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` })) :
+                          tipoItemStock === "envase" ? envases.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` })) :
+                          bebidas.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))
+                        }
                         value={field.value ? Number(field.value) : 0}
                         onChange={(val) => field.onChange(val)}
                         placeholder="Seleccionar..."
@@ -344,7 +423,8 @@ export default function Inventario() {
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Ingrediente</th>
+                    <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Artículo</th>
+                    <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Tipo</th>
                     <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Stock Actual</th>
                     <th className="text-right px-4 py-3 text-sm font-medium text-gray-600">Stock Mínimo</th>
                     <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Ubicación</th>
@@ -353,11 +433,31 @@ export default function Inventario() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {inventario.filter((inv) => !searchTerm || inv.ingrediente_nombre?.toLowerCase().includes(searchTerm.toLowerCase())).map((inv) => {
+                  {inventario.filter((inv) => {
+                    const q = searchTerm.toLowerCase();
+                    if (q && !inv.ingrediente_nombre?.toLowerCase().includes(q)) return false;
+                    if (tipoFilter !== "todos") {
+                      const ing = ingredientes.find(i => i.id === inv.ingrediente_id);
+                      const tipo = ing?.tipo ?? "ingrediente";
+                      if (tipo !== tipoFilter) return false;
+                    }
+                    return true;
+                  }).map((inv) => {
                     const isLow = inv.stock_actual <= inv.stock_minimo;
+                    const ing = ingredientes.find(i => i.id === inv.ingrediente_id);
+                    const tipo = ing?.tipo ?? "ingrediente";
                     return (
                       <tr key={inv.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-800">{inv.ingrediente_nombre}</td>
+                        <td className="px-4 py-3 text-center">
+                          <span className={`inline-block px-1.5 py-0.5 rounded text-xs font-medium ${
+                            tipo === "envase" ? "bg-amber-100 text-amber-700" :
+                            tipo === "bebida" ? "bg-cyan-100 text-cyan-700" :
+                            "bg-green-100 text-green-700"
+                          }`}>
+                            {tipo === "envase" ? "📦" : tipo === "bebida" ? "🥤" : "🥕"}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600 text-right">
                           {inv.stock_actual % 1 === 0 ? inv.stock_actual.toFixed(0) : inv.stock_actual.toFixed(3)} {inv.unidad}
                         </td>
@@ -375,12 +475,28 @@ export default function Inventario() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-right">
-                          <button
-                            onClick={() => handleDeleteStock(inv.ingrediente_id)}
-                            className="text-red-600 hover:text-red-800"
-                          >
-                            <Minus size={16} />
-                          </button>
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleQuickMovement(inv.ingrediente_id, "entrada", 1)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded" title="Añadir 1"
+                            >
+                              <ArrowDown size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleQuickMovement(inv.ingrediente_id, "salida", 1)}
+                              className="p-1 text-red-600 hover:bg-red-50 rounded" title="Quitar 1"
+                            >
+                              <ArrowUp size={14} />
+                            </button>
+                            <span className="border-l border-gray-200 mx-1"></span>
+                            <button
+                              onClick={() => handleDeleteStock(inv.ingrediente_id)}
+                              className="text-red-400 hover:text-red-600"
+                              title="Eliminar del inventario"
+                            >
+                              <Minus size={16} />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -415,16 +531,30 @@ export default function Inventario() {
                   <X size={20} />
                 </button>
               </div>
+              <div className="flex gap-2 mb-4">
+                {[{ k: "ingrediente", l: "🥕 Ingrediente" }, { k: "envase", l: "📦 Envase" }, { k: "bebida", l: "🥤 Bebida" }].map(t => (
+                  <button key={t.k} type="button" onClick={() => { setTipoItemMov(t.k as any); resetMov({ tipo: "entrada" }); }}
+                    className={`px-3 py-1.5 rounded text-xs font-medium ${tipoItemMov === t.k ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 border"}`}>
+                    {t.l}
+                  </button>
+                ))}
+              </div>
               <form onSubmit={handleSubmitMov(onSubmitMovimiento)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    {tipoItemMov === "ingrediente" ? "Ingrediente *" : tipoItemMov === "envase" ? "Envase *" : "Bebida *"}
+                  </label>
                   <Controller
                     control={controlMov}
                     name="ingrediente_id"
-                    rules={{ required: "Selecciona un ingrediente" }}
+                    rules={{ required: "Selecciona un artículo" }}
                     render={({ field }) => (
                       <SearchableSelect
-                        options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                        options={
+                          tipoItemMov === "ingrediente" ? ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` })) :
+                          tipoItemMov === "envase" ? envases.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` })) :
+                          bebidas.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))
+                        }
                         value={field.value ? Number(field.value) : 0}
                         onChange={(val) => field.onChange(val)}
                         placeholder="Seleccionar..."

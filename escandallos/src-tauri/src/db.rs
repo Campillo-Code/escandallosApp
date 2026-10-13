@@ -270,6 +270,24 @@ async fn run_migrations(pool: &MySqlPool) {
         println!("ALTER TABLE recetas ADD precio_venta_entero completed");
     }
 
+    // INGREDIENTES: Add tipo if not exists (ingrediente/envase/bebida)
+    let check_tipo_ing: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'ingredientes' AND COLUMN_NAME = 'tipo'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_tipo_ing.is_none() {
+        let _ = sqlx::query("ALTER TABLE ingredientes ADD COLUMN tipo VARCHAR(20) NOT NULL DEFAULT 'ingrediente' AFTER unidad_base").execute(pool).await;
+        println!("ALTER TABLE ingredientes ADD tipo completed");
+    }
+
+    // RECETA_INGREDIENTES: Add tipo_envase if not exists (null/porcion/encargo)
+    let check_tipo_env: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'receta_ingredientes' AND COLUMN_NAME = 'tipo_envase'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_tipo_env.is_none() {
+        let _ = sqlx::query("ALTER TABLE receta_ingredientes ADD COLUMN tipo_envase VARCHAR(20) NULL AFTER orden").execute(pool).await;
+        println!("ALTER TABLE receta_ingredientes ADD tipo_envase completed");
+    }
+
     // CAJA_TICKETS: Add tipo if not exists
     let check_tipo_ticket: Option<(String,)> = sqlx::query_as(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'caja_tickets' AND COLUMN_NAME = 'tipo'"

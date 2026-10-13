@@ -87,12 +87,18 @@ interface CosteReceta {
   precio_venta_entero: number | null;
   base_imponible: number | null;
   cuota_iva: number | null;
+  coste_envase_encargo: number;
+  coste_envase_porcion: number;
 }
 
 interface Ingrediente {
   id: number;
   nombre: string;
   unidad_base: string;
+  categoria: string | null;
+  alergenos: string | null;
+  precio: number | null;
+  proveedor_nombre: string | null;
 }
 
 interface Guarnicion {
@@ -147,7 +153,9 @@ export default function Recetas() {
   const [costesGuarniciones, setCostesGuarniciones] = useState<CosteGuarnicion[]>([]);
   const [showGuarnForm, setShowGuarnForm] = useState(false);
   const [recetasBase, setRecetasBase] = useState<Receta[]>([]);
-  const [tipoIngrediente, setTipoIngrediente] = useState<"ingrediente" | "receta">("ingrediente");
+  const [tipoIngrediente, setTipoIngrediente] = useState<"ingrediente" | "receta" | "envase">("ingrediente");
+  const [envases, setEnvases] = useState<Ingrediente[]>([]);
+  const [tipoEnvase, setTipoEnvase] = useState<"porcion" | "encargo">("porcion");
   const [ingredientesError, setIngredientesError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategoria, setSelectedCategoria] = useState<string | null>(null);
@@ -303,6 +311,15 @@ export default function Recetas() {
     }
   };
 
+  const loadEnvases = async () => {
+    try {
+      const data = await invoke<Ingrediente[]>("get_ingredientes", { tipo: "envase" });
+      setEnvases(data);
+    } catch (e) {
+      console.error("Error loading envases:", e);
+    }
+  };
+
   const loadRecetaIngredientes = async (recetaId: number) => {
     try {
       const data = await invoke<RecetaIngrediente[]>("get_receta_ingredientes", { recetaId: recetaId });
@@ -335,6 +352,7 @@ export default function Recetas() {
   useEffect(() => {
     loadRecetas();
     loadIngredientes();
+    loadEnvases();
     invoke<Receta[]>("get_recetas_base").then(setRecetasBase).catch(console.error);
     invoke<Guarnicion[]>("get_guarniciones").then(setGuarniciones).catch(console.error);
   }, []);
@@ -443,10 +461,11 @@ export default function Recetas() {
   const onSubmitIngrediente = async (data: IngredienteRecetaFormData) => {
     const recetaId = editingId || selectedReceta?.id;
     if (!recetaId) return;
-    const ingredienteId = tipoIngrediente === "ingrediente" ? Number(data.ingrediente_id) : null;
+    const ingredienteId = tipoIngrediente === "ingrediente" || tipoIngrediente === "envase" ? Number(data.ingrediente_id) : null;
     const subRecetaId = tipoIngrediente === "receta" ? Number(data.sub_receta_id) : null;
     const cantidad = Number(data.cantidad);
     if (tipoIngrediente === "ingrediente" && (!ingredienteId || ingredienteId === 0)) { alert("Selecciona un ingrediente"); return; }
+    if (tipoIngrediente === "envase" && (!ingredienteId || ingredienteId === 0)) { alert("Selecciona un envase"); return; }
     if (tipoIngrediente === "receta" && (!subRecetaId || subRecetaId === 0)) { alert("Selecciona una receta base"); return; }
     if (!cantidad || cantidad <= 0) { alert("Introduce una cantidad válida"); return; }
     const input = {
@@ -458,6 +477,7 @@ export default function Recetas() {
       merma_porcentaje: Number(data.merma_porcentaje) || 0,
       notas: data.notas || null,
       orden: recetaIngredientes.length,
+      tipo_envase: tipoIngrediente === "envase" ? tipoEnvase : null,
     };
     try {
       await invoke("add_receta_ingrediente", { input });
@@ -754,17 +774,21 @@ export default function Recetas() {
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "receta" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
                     Receta base
                   </button>
+                  <button type="button" onClick={() => { setTipoIngrediente("envase"); setTipoEnvase("porcion"); resetIng({ merma_porcentaje: "0", unidad: "ud" }); }}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "envase" ? "bg-amber-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    📦 Envase
+                  </button>
                 </div>
                 <form onSubmit={handleSubmitIng(onSubmitIngrediente)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {tipoIngrediente === "ingrediente" ? "Ingrediente *" : "Receta base *"}
+                      {tipoIngrediente === "ingrediente" ? "Ingrediente *" : tipoIngrediente === "envase" ? "Envase *" : "Receta base *"}
                     </label>
                     {tipoIngrediente === "ingrediente" ? (
                       <Controller
                         control={controlIng}
                         name="ingrediente_id"
-                        rules={{ required: tipoIngrediente === "ingrediente" ? "Selecciona un ingrediente" : false }}
+                        rules={{ required: "Selecciona un ingrediente" }}
                         render={({ field }) => (
                           <SearchableSelect
                             options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
@@ -774,11 +798,25 @@ export default function Recetas() {
                           />
                         )}
                       />
+                    ) : tipoIngrediente === "envase" ? (
+                      <Controller
+                        control={controlIng}
+                        name="ingrediente_id"
+                        rules={{ required: "Selecciona un envase" }}
+                        render={({ field }) => (
+                          <SearchableSelect
+                            options={envases.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base}${i.precio ? ` - ${i.precio.toFixed(4)}€` : ''})` }))}
+                            value={field.value ? Number(field.value) : 0}
+                            onChange={(val) => field.onChange(val)}
+                            placeholder="Seleccionar envase..."
+                          />
+                        )}
+                      />
                     ) : (
                       <Controller
                         control={controlIng}
                         name="sub_receta_id"
-                        rules={{ required: tipoIngrediente === "receta" ? "Selecciona una receta base" : false }}
+                        rules={{ required: "Selecciona una receta base" }}
                         render={({ field }) => (
                           <SearchableSelect
                             options={recetasBase.filter(rb => rb.id !== editingId).map(rb => ({ value: rb.id, label: `${rb.nombre} (${rb.porciones} ud.)` }))}
@@ -789,9 +827,10 @@ export default function Recetas() {
                         )}
                       />
                     )}
-                    {errorsIng.ingrediente_id && tipoIngrediente === "ingrediente" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.ingrediente_id.message)}</p>}
+                    {errorsIng.ingrediente_id && tipoIngrediente !== "receta" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.ingrediente_id.message)}</p>}
                     {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.sub_receta_id.message)}</p>}
                     {recetasBase.length === 0 && tipoIngrediente === "receta" && <p className="text-xs text-gray-400 mt-1">No hay recetas marcadas como base</p>}
+                    {envases.length === 0 && tipoIngrediente === "envase" && <p className="text-xs text-gray-400 mt-1">No hay envases creados. Ve a Suministros → Envases</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad *</label>
@@ -803,6 +842,24 @@ export default function Recetas() {
                     />
                     {errorsIng.cantidad && <p className="text-red-500 text-sm mt-1">{String(errorsIng.cantidad.message)}</p>}
                   </div>
+                  {tipoIngrediente === "envase" && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de envase *</label>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={() => setTipoEnvase("porcion")}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${tipoEnvase === "porcion" ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-700 border-gray-300 hover:border-blue-400"}`}>
+                          Porción
+                        </button>
+                        <button type="button" onClick={() => setTipoEnvase("encargo")}
+                          className={`flex-1 py-2 rounded-lg text-sm font-medium border transition-colors ${tipoEnvase === "encargo" ? "bg-amber-600 text-white border-amber-600" : "bg-white text-gray-700 border-gray-300 hover:border-amber-400"}`}>
+                          Encargo
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {tipoEnvase === "porcion" ? "Se suma al coste por ración" : "Se suma al coste del producto entero"}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Unidad *</label>
                     <select
@@ -1032,9 +1089,13 @@ export default function Recetas() {
                 {(() => {
                   const costeGuarnPorcion = costesGuarniciones.reduce((s, c) => s + c.coste_porcion, 0);
                   const costePorcComb = costeReceta.coste_porcion + costeGuarnPorcion;
+                  const envasePorcion = costeReceta.coste_envase_porcion || 0;
                   return (
                     <>
                       <p className="text-2xl font-bold text-slate-800">{costePorcComb.toFixed(2)} €</p>
+                      {envasePorcion > 0 && (
+                        <p className="text-xs text-amber-600">Sin envase: {(costePorcComb - envasePorcion).toFixed(2)}€ + Envase: {envasePorcion.toFixed(2)}€</p>
+                      )}
                       {costeGuarnPorcion > 0 && <p className="text-xs text-gray-400">Receta: {costeReceta.coste_porcion.toFixed(2)}€ + Guarn.: {costeGuarnPorcion.toFixed(2)}€</p>}
                     </>
                   );
@@ -1042,12 +1103,12 @@ export default function Recetas() {
               </div>
               {costeReceta.food_cost_pct != null && (
                 <div className="bg-white rounded-lg shadow p-4">
-                  <p className="text-sm text-gray-500">Food Cost</p>
+                  <p className="text-sm text-gray-500">Coste de preparación</p>
                   {(() => {
                     const costeGuarnPorcion = costesGuarniciones.reduce((s, c) => s + c.coste_porcion, 0);
                     const costePorcComb = costeReceta.coste_porcion + costeGuarnPorcion;
-                    const precioVenta = costeReceta.precio_venta ?? 0;
-                    const foodCostComb = precioVenta > 0 ? (costePorcComb / precioVenta) * 100 : null;
+                    const baseImponible = costeReceta.base_imponible ?? costeReceta.precio_venta ?? 0;
+                    const foodCostComb = baseImponible > 0 ? (costePorcComb / baseImponible) * 100 : null;
                     return (
                       <>
                         {foodCostComb != null ? (
@@ -1060,7 +1121,7 @@ export default function Recetas() {
                         ) : (
                           <p className="text-2xl font-bold text-gray-400">—</p>
                         )}
-                        <p className="text-xs text-gray-400">Precio actual: {precioVenta.toFixed(2)} €/porción</p>
+                        <p className="text-xs text-gray-400">Base: {baseImponible.toFixed(2)} €/porción</p>
                       </>
                     );
                   })()}
@@ -1134,14 +1195,19 @@ export default function Recetas() {
                   const baseSugerida = margen < 100 && margen > 0 ? costeReceta.coste_total / (1 - margen / 100) : costeReceta.coste_total * 2;
                   const precioSugerido = baseSugerida * (1 + iva / 100);
                   const precioEntero = costeReceta.precio_venta_entero;
-                  const margenEntero = precioEntero != null && precioEntero > 0
-                    ? ((precioEntero - costeReceta.coste_total) / precioEntero) * 100
+                  const costeEncargoTotal = costeReceta.coste_total + costeReceta.coste_envase_encargo;
+                  const baseImponibleEntero = precioEntero != null ? precioEntero / (1 + iva / 100) : null;
+                  const margenEntero = baseImponibleEntero != null && baseImponibleEntero > 0
+                    ? ((baseImponibleEntero - costeEncargoTotal) / baseImponibleEntero) * 100
                     : null;
                   return (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
                       <div className="bg-amber-50 rounded-lg p-2">
                         <p className="text-xs text-gray-500">Coste total</p>
                         <p className="text-lg font-bold text-gray-800">{costeReceta.coste_total.toFixed(2)} €</p>
+                        {costeReceta.coste_envase_encargo > 0 && (
+                          <p className="text-[10px] text-amber-600">+ {costeReceta.coste_envase_encargo.toFixed(2)} € envase</p>
+                        )}
                       </div>
                       <div className="bg-amber-50 rounded-lg p-2">
                         <p className="text-xs text-gray-500">Porciones</p>
@@ -1150,7 +1216,10 @@ export default function Recetas() {
                       <div className="bg-amber-50 rounded-lg p-2">
                         <p className="text-xs text-gray-500">Precio venta entero</p>
                         {precioEntero != null ? (
-                          <p className="text-lg font-bold text-amber-700">{precioEntero.toFixed(2)} €</p>
+                          <>
+                            <p className="text-lg font-bold text-amber-700">{precioEntero.toFixed(2)} €</p>
+                            <p className="text-[10px] text-gray-400">Base: {baseImponibleEntero?.toFixed(2)} € + IVA {iva}%</p>
+                          </>
                         ) : (
                           <>
                             <p className="text-lg font-bold text-blue-600">{precioSugerido.toFixed(2)} €</p>

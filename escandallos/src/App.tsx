@@ -22,6 +22,8 @@ import PlatosCaja from "./pages/PlatosCaja";
 import Despieces from "./pages/Despieces";
 import MenuDelDia from "./pages/MenuDelDia";
 import Pedidos from "./pages/Pedidos";
+import Envases from "./pages/Envases";
+import Bebidas from "./pages/Bebidas";
 
 
 interface SidebarLink {
@@ -55,9 +57,11 @@ const sections: SidebarSection[] = [
     icon: "🚚",
     links: [
       { to: "/ingredientes", label: "Ingredientes", icon: "🥕" },
+      { to: "/envases", label: "Envases", icon: "📦" },
+      { to: "/bebidas", label: "Bebidas", icon: "🥤" },
       { to: "/proveedores", label: "Proveedores", icon: "🏭" },
       { to: "/albaranes", label: "Albaranes", icon: "📄" },
-      { to: "/inventario", label: "Inventario", icon: "📦" },
+      { to: "/inventario", label: "Inventario", icon: "📋" },
       { to: "/despieces", label: "Despieces", icon: "🔪" },
     ],
   },
@@ -246,6 +250,8 @@ function App() {
 
           <Route path="/escandallos" element={<Escandallos />} />
           <Route path="/ingredientes" element={<Ingredientes />} />
+          <Route path="/envases" element={<Envases />} />
+          <Route path="/bebidas" element={<Bebidas />} />
           <Route path="/proveedores" element={<Proveedores />} />
           <Route path="/guarniciones" element={<Guarniciones />} />
           <Route path="/albaranes" element={<Albaranes />} />

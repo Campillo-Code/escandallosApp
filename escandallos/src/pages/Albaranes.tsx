@@ -65,6 +65,8 @@ export default function Albaranes() {
   const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
+  const [envases, setEnvases] = useState<Ingrediente[]>([]);
+  const [bebidas, setBebidas] = useState<Ingrediente[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,6 +74,11 @@ export default function Albaranes() {
   const [detalles, setDetalles] = useState<AlbaranDetalle[]>([]);
   const [showDetalleForm, setShowDetalleForm] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filtroEstado, setFiltroEstado] = useState<"todos" | "pendiente" | "procesado">("todos");
+  const [tipoDetalle, setTipoDetalle] = useState<"ingrediente" | "envase" | "bebida">("ingrediente");
+  const [lineasTemp, setLineasTemp] = useState<{ ingrediente_id: number; nombre: string; unidad: string; cantidad: number; coste_total: number }[]>([]);
+  const [showAddLinea, setShowAddLinea] = useState(false);
+  const [lineaForm, setLineaForm] = useState({ ingrediente_id: 0, cantidad: "", coste_total: "" });
 
   const {
     register,
@@ -119,8 +126,14 @@ export default function Albaranes() {
 
   const loadIngredientes = async () => {
     try {
-      const data = await invoke<Ingrediente[]>("get_ingredientes");
-      setIngredientes(data);
+      const [ings, envs, bebs] = await Promise.all([
+        invoke<Ingrediente[]>("get_ingredientes", { tipo: "ingrediente" }),
+        invoke<Ingrediente[]>("get_ingredientes", { tipo: "envase" }),
+        invoke<Ingrediente[]>("get_ingredientes", { tipo: "bebida" }),
+      ]);
+      setIngredientes(ings);
+      setEnvases(envs);
+      setBebidas(bebs);
     } catch (e) {
       console.error("Error loading ingredientes:", e);
     }
@@ -157,18 +170,55 @@ export default function Albaranes() {
         notas: data.notas || null,
         activo: true,
       };
+      let albaranId: number;
       if (editingId) {
         await invoke("update_albaran", { id: editingId, input });
+        albaranId = editingId;
       } else {
-        await invoke("create_albaran", { input });
+        albaranId = await invoke<number>("create_albaran", { input });
+      }
+      // Guardar líneas temporales
+      for (const linea of lineasTemp) {
+        const precioUnitario = linea.cantidad > 0 ? linea.coste_total / linea.cantidad : 0;
+        await invoke("add_albaran_detalle", {
+          input: {
+            albaran_id: albaranId,
+            ingrediente_id: linea.ingrediente_id,
+            cantidad: linea.cantidad,
+            unidad: linea.unidad,
+            precio_unitario: precioUnitario,
+            subtotal: linea.coste_total,
+          },
+        });
       }
       setShowForm(false);
       setEditingId(null);
+      setLineasTemp([]);
       reset();
       loadAlbaranes();
     } catch (e) {
       alert("Error al guardar: " + e);
     }
+  };
+
+  const addLineaTemporal = () => {
+    const ing = tipoDetalle === "ingrediente" ? ingredientes.find(i => i.id === lineaForm.ingrediente_id) :
+                tipoDetalle === "envase" ? envases.find(i => i.id === lineaForm.ingrediente_id) :
+                bebidas.find(i => i.id === lineaForm.ingrediente_id);
+    if (!ing || !lineaForm.cantidad || !lineaForm.coste_total) return;
+    setLineasTemp(prev => [...prev, {
+      ingrediente_id: lineaForm.ingrediente_id,
+      nombre: ing.nombre,
+      unidad: ing.unidad_base,
+      cantidad: parseFloat(lineaForm.cantidad),
+      coste_total: parseFloat(lineaForm.coste_total),
+    }]);
+    setLineaForm({ ingrediente_id: 0, cantidad: "", coste_total: "" });
+    setShowAddLinea(false);
+  };
+
+  const removeLineaTemporal = (index: number) => {
+    setLineasTemp(prev => prev.filter((_, i) => i !== index));
   };
 
   const onSubmitDetalle = async (data: DetalleFormData) => {
@@ -321,16 +371,36 @@ export default function Albaranes() {
                 <X size={20} />
               </button>
             </div>
+            <div className="flex gap-2 mb-4">
+              <button type="button" onClick={() => setTipoDetalle("ingrediente")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoDetalle === "ingrediente" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                🥕 Ingrediente
+              </button>
+              <button type="button" onClick={() => setTipoDetalle("envase")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoDetalle === "envase" ? "bg-amber-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                📦 Envase
+              </button>
+              <button type="button" onClick={() => setTipoDetalle("bebida")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoDetalle === "bebida" ? "bg-cyan-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                🥤 Bebida
+              </button>
+            </div>
             <form onSubmit={handleSubmitDetalle(onSubmitDetalle)} className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ingrediente *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {tipoDetalle === "ingrediente" ? "Ingrediente *" : tipoDetalle === "envase" ? "Envase *" : "Bebida *"}
+                </label>
                 <Controller
                   control={controlDetalle}
                   name="ingrediente_id"
-                  rules={{ required: "Selecciona un ingrediente" }}
+                  rules={{ required: "Selecciona un artículo" }}
                   render={({ field }) => (
                     <SearchableSelect
-                      options={ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))}
+                      options={
+                        tipoDetalle === "ingrediente" ? ingredientes.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` })) :
+                        tipoDetalle === "envase" ? envases.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` })) :
+                        bebidas.map(i => ({ value: i.id, label: `${i.nombre} (${i.unidad_base})` }))
+                      }
                       value={field.value ? Number(field.value) : 0}
                       onChange={(val) => field.onChange(val)}
                       placeholder="Seleccionar..."
@@ -524,6 +594,69 @@ export default function Albaranes() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
+
+            {/* Líneas del albarán */}
+            <div className="md:col-span-2 border-t pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <label className="text-sm font-semibold text-gray-700">Líneas del albarán</label>
+                <button type="button" onClick={() => setShowAddLinea(true)}
+                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+                  <Plus size={16} /> Añadir línea
+                </button>
+              </div>
+
+              {showAddLinea && (
+                <div className="bg-gray-50 rounded-lg p-3 mb-3">
+                  <div className="flex gap-2 mb-2">
+                    {[{ k: "ingrediente", l: "🥕 Ingrediente" }, { k: "envase", l: "📦 Envase" }, { k: "bebida", l: "🥤 Bebida" }].map(t => (
+                      <button key={t.k} type="button" onClick={() => { setTipoDetalle(t.k as any); setLineaForm({ ingrediente_id: 0, cantidad: "", coste_total: "" }); }}
+                        className={`px-3 py-1 rounded text-xs font-medium ${tipoDetalle === t.k ? "bg-blue-600 text-white" : "bg-white text-gray-600 border"}`}>
+                        {t.l}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select value={lineaForm.ingrediente_id} onChange={(e) => setLineaForm({ ...lineaForm, ingrediente_id: parseInt(e.target.value) })}
+                      className="border rounded px-2 py-1.5 text-sm">
+                      <option value={0}>Seleccionar...</option>
+                      {(tipoDetalle === "ingrediente" ? ingredientes : tipoDetalle === "envase" ? envases : bebidas).map(i => (
+                        <option key={i.id} value={i.id}>{i.nombre} ({i.unidad_base})</option>
+                      ))}
+                    </select>
+                    <input type="number" step="0.001" placeholder="Cantidad" value={lineaForm.cantidad}
+                      onChange={(e) => setLineaForm({ ...lineaForm, cantidad: e.target.value })}
+                      className="border rounded px-2 py-1.5 text-sm" />
+                    <input type="number" step="0.01" placeholder="Coste €" value={lineaForm.coste_total}
+                      onChange={(e) => setLineaForm({ ...lineaForm, coste_total: e.target.value })}
+                      className="border rounded px-2 py-1.5 text-sm" />
+                  </div>
+                  <div className="flex gap-2 mt-2 justify-end">
+                    <button type="button" onClick={() => setShowAddLinea(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
+                    <button type="button" onClick={addLineaTemporal} className="text-xs text-blue-600 font-medium hover:text-blue-800">Añadir</button>
+                  </div>
+                </div>
+              )}
+
+              {lineasTemp.length === 0 ? (
+                <p className="text-xs text-gray-400">Sin líneas añadidas</p>
+              ) : (
+                <div className="space-y-1">
+                  {lineasTemp.map((l, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-1.5">
+                      <span>{l.nombre} × {l.cantidad} {l.unidad}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono">{l.coste_total.toFixed(2)} €</span>
+                        <button type="button" onClick={() => removeLineaTemporal(i)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex justify-end text-sm font-semibold pt-1 border-t">
+                    <span>Total: {lineasTemp.reduce((s, l) => s + l.coste_total, 0).toFixed(2)} €</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="md:col-span-2 flex gap-3 justify-end">
               <button
                 type="button"
@@ -551,8 +684,18 @@ export default function Albaranes() {
           <div className="p-6 text-center text-gray-500">No hay albaranes registrados</div>
         ) : (
           <>
-            <div className="p-4 pb-2">
-              <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar albarán..." />
+            <div className="p-4 pb-2 flex flex-wrap gap-3 items-center">
+              <div className="flex-1 min-w-[200px]">
+                <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Buscar albarán..." />
+              </div>
+              <div className="flex gap-1">
+                {[{ key: "todos", label: "Todos" }, { key: "pendiente", label: "Pendientes" }, { key: "procesado", label: "Procesados" }].map(f => (
+                  <button key={f.key} onClick={() => setFiltroEstado(f.key as any)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${filtroEstado === f.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                    {f.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
@@ -566,7 +709,12 @@ export default function Albaranes() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {albaranes.filter((a) => { const q = searchTerm.toLowerCase(); return !q || (a.numero_albaran ?? "").toLowerCase().includes(q) || (a.proveedor_nombre ?? "").toLowerCase().includes(q); }).map((a) => (
+              {albaranes.filter((a) => {
+                const q = searchTerm.toLowerCase();
+                if (filtroEstado === "pendiente" && a.procesado) return false;
+                if (filtroEstado === "procesado" && !a.procesado) return false;
+                return !q || (a.numero_albaran ?? "").toLowerCase().includes(q) || (a.proveedor_nombre ?? "").toLowerCase().includes(q);
+              }).map((a) => (
                 <tr
                   key={a.id}
                   className="hover:bg-gray-50 cursor-pointer"
