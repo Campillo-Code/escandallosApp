@@ -700,7 +700,7 @@ export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100
   doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(0);
-  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, headerH * 0.65, { align: "center" });
+  doc.text("ELABORADO EN CON SAZÓN", labelW / 2, headerH * 0.65, { align: "center" });
   y = headerH + Math.max(2, 3 * scale);
 
   // Product name
@@ -810,7 +810,7 @@ export async function printEtiquetaPDF(data: EtiquetaData, labelW: number = 100,
   doc.setFontSize(Math.max(3, 6 * scale));
   doc.setFont("helvetica", "bold");
   doc.setTextColor(255);
-  doc.text("ELABORADO EN VIVIENDA PARTICULAR", labelW / 2, headerH * 0.65, { align: "center" });
+  doc.text("ELABORADO EN CON SAZÓN", labelW / 2, headerH * 0.65, { align: "center" });
   y = headerH + Math.max(2, 3 * scale);
 
   doc.setFontSize(Math.max(5, 10 * scale));
