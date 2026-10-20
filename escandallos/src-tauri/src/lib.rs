@@ -3085,6 +3085,38 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
         .bind(ticket_id).bind(&fecha).bind(&plato).bind(item.cantidad)
         .bind(item.precio_unitario).bind(item.subtotal)
         .execute(pool).await.map_err(|e| e.to_string())?;
+
+        // Descontar envases de porción del inventario
+        // Buscar el plato en caja_platos para obtener su receta
+        let plato_receta: Option<i64> = sqlx::query_scalar(
+            "SELECT receta_id FROM caja_platos WHERE nombre = ? AND activo = 1 LIMIT 1"
+        ).bind(&item.descripcion).fetch_optional(pool).await.ok().flatten();
+
+        if let Some(receta_id) = plato_receta {
+            // Obtener envases de porción de esta receta
+            let envases = sqlx::query(
+                "SELECT ri.ingrediente_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, i.unidad_base FROM receta_ingredientes ri INNER JOIN ingredientes i ON ri.ingrediente_id = i.id WHERE ri.receta_id = ? AND ri.tipo_envase = 'porcion' AND ri.ingrediente_id IS NOT NULL"
+            ).bind(receta_id).fetch_all(pool).await.unwrap_or_default();
+
+            for envase in &envases {
+                let ingrediente_id: i64 = envase.try_get("ingrediente_id").unwrap_or(0);
+                let cantidad_envase: f64 = envase.try_get::<f64, _>("cantidad").unwrap_or(0.0);
+                if ingrediente_id == 0 || cantidad_envase == 0.0 { continue; }
+
+                // Descontar del inventario (1 envase por unidad vendida)
+                let cantidad_total = cantidad_envase * item.cantidad as f64;
+                sqlx::query("UPDATE inventario SET stock_actual = GREATEST(stock_actual - ?, 0), ultima_actualizacion = CURRENT_TIMESTAMP WHERE ingrediente_id = ?")
+                    .bind(cantidad_total).bind(ingrediente_id)
+                    .execute(pool).await.ok();
+
+                // Registrar movimiento
+                sqlx::query("INSERT INTO inventario_movimientos (ingrediente_id, tipo, cantidad, referencia, notas) VALUES (?, 'salida', ?, ?, ?)")
+                    .bind(ingrediente_id).bind(cantidad_total)
+                    .bind(format!("Ticket #{}", ticket_id))
+                    .bind(format!("Envase porción: {} x{}", item.descripcion, item.cantidad))
+                    .execute(pool).await.ok();
+            }
+        }
     }
 
     Ok(ticket_id)

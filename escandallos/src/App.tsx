@@ -107,9 +107,12 @@ function App() {
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar */}
       <aside className="w-64 bg-slate-800 text-white flex flex-col">
-        <div className="p-4 border-b border-slate-700">
-          <h1 className="text-xl font-bold">🍽️ Con Sazón_gestión</h1>
-          <p className="text-xs text-slate-400 mt-1">Gestión de costes</p>
+        <div className="p-4 border-b border-slate-700 flex items-center gap-3">
+          <img src="/images/logo.png" alt="Con Sazón" className="w-10 h-10 rounded-lg" />
+          <div>
+            <h1 className="text-xl font-bold">Con Sazón</h1>
+            <p className="text-xs text-slate-400">Gestión de costes</p>
+          </div>
         </div>
         <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto text-sm">
           {/* Dashboard */}
