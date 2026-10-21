@@ -57,6 +57,8 @@ export default function Produccion() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [detallesExpandido, setDetallesExpandido] = useState<DetalleLine[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<Produccion | null>(null);
+  const [restaurarStock, setRestaurarStock] = useState(true);
 
   const loadProduccion = async () => {
     try { setProducciones(await invoke("get_produccion", { fechaDesde: fechaDesde, fechaHasta: fechaHasta })); } catch (e) { console.error(e); }
@@ -113,9 +115,13 @@ export default function Produccion() {
     } catch (e) { alert("Error: " + e); }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("¿Eliminar este registro de producción?")) return;
-    try { await invoke("delete_produccion", { id }); loadProduccion(); } catch (e) { alert("Error: " + e); }
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      await invoke("delete_produccion", { id: deleteTarget.id, restaurarStock });
+      setDeleteTarget(null);
+      loadProduccion();
+    } catch (e) { alert("Error: " + e); }
   };
 
   const toggleExpand = async (id: number) => {
@@ -276,7 +282,7 @@ export default function Produccion() {
                       <td className="px-4 py-3 text-sm text-gray-600">{p.responsable || "—"}</td>
                       <td className="px-4 py-3 text-sm text-right" onClick={e => e.stopPropagation()}>
                         <button onClick={(e) => handleEtiqueta(p.id, e)} className="text-green-600 hover:text-green-800 mr-2" title="Guardar etiqueta"><Tag size={15} /></button>
-                        <button onClick={() => handleDelete(p.id)} className="text-red-600 hover:text-red-800"><Trash2 size={15} /></button>
+                        <button onClick={() => { setRestaurarStock(true); setDeleteTarget(p); }} className="text-red-600 hover:text-red-800"><Trash2 size={15} /></button>
                       </td>
                     </tr>
                     {expandedId === p.id && (
@@ -305,6 +311,33 @@ export default function Produccion() {
           )}
         </div>
       </>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Eliminar producción</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              Se eliminará el registro <span className="font-mono font-medium">{deleteTarget.lote_producto}</span> de {deleteTarget.receta_nombre}.
+            </p>
+            <label className="flex items-start gap-2 p-3 bg-gray-50 rounded-lg border cursor-pointer hover:bg-gray-100 mb-4">
+              <input
+                type="checkbox"
+                checked={restaurarStock}
+                onChange={(e) => setRestaurarStock(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-sm text-gray-700">
+                Devolver al inventario las cantidades utilizadas
+                <span className="block text-xs text-gray-400">Desmarca si quieres que el stock consumido no se recupere</span>
+              </span>
+            </label>
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={handleDelete} className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

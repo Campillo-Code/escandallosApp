@@ -3,11 +3,19 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { invoke } from "@tauri-apps/api/core";
-import { Pencil, Trash2, Plus, X, ChevronLeft, CheckCircle, FileText } from "lucide-react";
+import { Pencil, Trash2, Plus, X, ChevronLeft, CheckCircle, FileText, FileUp, Loader2 } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { exportAlbaranPDF } from "../lib/exports";
 import SearchBar from "../components/SearchBar";
 import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
+import {
+  parsearDocumento,
+  mejorCoincidencia,
+  calcularCantidadReal,
+  type ItemCatalogo,
+  type CabeceraDocumento,
+} from "../lib/albaranParser";
 
 const albaranSchema = z.object({
   proveedor_id: z.string().min(1, "Selecciona un proveedor"),
@@ -54,12 +62,28 @@ interface Ingrediente {
 }
 
 const detalleSchema = z.object({
-  ingrediente_id: z.string().min(1, "Selecciona un ingrediente"),
+  ingrediente_id: z.number({ error: "Selecciona un artículo" }).min(1, "Selecciona un artículo"),
   cantidad: z.string().min(1, "La cantidad es obligatoria"),
   coste_total: z.string().min(1, "El coste total es obligatorio"),
 });
 
 type DetalleFormData = z.infer<typeof detalleSchema>;
+
+interface FilaRevision {
+  uid: number;
+  descripcion: string;
+  cantidad: string;
+  unidad_linea: string | null;
+  precio: string;
+  item_id: number;
+  incluida: boolean;
+  contenido: number | null;
+  unidad_contenido: string | null;
+  cantidad_real: string;
+  iva_pct: number | null;
+  importe_con_iva: boolean;
+  precio_con_iva: boolean;
+}
 
 export default function Albaranes() {
   const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
@@ -79,6 +103,10 @@ export default function Albaranes() {
   const [lineasTemp, setLineasTemp] = useState<{ ingrediente_id: number; nombre: string; unidad: string; cantidad: number; coste_total: number }[]>([]);
   const [showAddLinea, setShowAddLinea] = useState(false);
   const [lineaForm, setLineaForm] = useState({ ingrediente_id: 0, cantidad: "", coste_total: "" });
+  const [revision, setRevision] = useState<FilaRevision[] | null>(null);
+  const [cabeceraDoc, setCabeceraDoc] = useState<CabeceraDocumento | null>(null);
+  const [cargandoDoc, setCargandoDoc] = useState(false);
+  const [destinoDoc, setDestinoDoc] = useState<"form" | "albaran">("form");
 
   const {
     register,
@@ -221,10 +249,209 @@ export default function Albaranes() {
     setLineasTemp(prev => prev.filter((_, i) => i !== index));
   };
 
+  const todosItems: ItemCatalogo[] = [
+    ...ingredientes.map((i) => ({ ...i, tipo: "ingrediente" as const })),
+    ...envases.map((i) => ({ ...i, tipo: "envase" as const })),
+    ...bebidas.map((i) => ({ ...i, tipo: "bebida" as const })),
+  ];
+
+  const subirDocumento = async (destino: "form" | "albaran") => {
+    try {
+      const seleccion = await open({
+        multiple: true,
+        filters: [{ name: "Documentos de albarán", extensions: ["png", "jpg", "jpeg", "webp", "bmp", "tif", "tiff", "pdf"] }],
+      });
+      if (!seleccion) return;
+      const rutas = (Array.isArray(seleccion) ? seleccion : [seleccion]).filter(
+        (r): r is string => typeof r === "string"
+      );
+      if (rutas.length === 0) return;
+
+      setCargandoDoc(true);
+
+      let cabecera: CabeceraDocumento | null = null;
+      const filas: FilaRevision[] = [];
+      const errores: string[] = [];
+
+      for (const ruta of rutas) {
+        try {
+          const texto = await invoke<string>("leer_documento_albaran", { path: ruta });
+          const res = parsearDocumento(texto, todosItems);
+          if (!cabecera && (res.cabecera.numero || res.cabecera.fecha || res.cabecera.proveedor_texto)) {
+            cabecera = res.cabecera;
+          } else if (cabecera) {
+            // Completar datos que falten (los totales suelen estar solo en la última página)
+            if (!cabecera.numero && res.cabecera.numero) cabecera.numero = res.cabecera.numero;
+            if (!cabecera.fecha && res.cabecera.fecha) cabecera.fecha = res.cabecera.fecha;
+            if (!cabecera.proveedor_texto && res.cabecera.proveedor_texto) {
+              cabecera.proveedor_texto = res.cabecera.proveedor_texto;
+            }
+            if (cabecera.total_base == null && res.cabecera.total_base != null) {
+              cabecera.total_base = res.cabecera.total_base;
+            }
+            if (cabecera.total_con_iva == null && res.cabecera.total_con_iva != null) {
+              cabecera.total_con_iva = res.cabecera.total_con_iva;
+            }
+          }
+          for (const l of res.lineas) {
+            const uds = l.cantidad ?? 0;
+            const item = l.item_id ? todosItems.find((i) => i.id === l.item_id) : undefined;
+            filas.push({
+              uid: filas.length,
+              descripcion: l.descripcion,
+              cantidad: l.cantidad != null ? String(l.cantidad) : "",
+              unidad_linea: l.unidad_linea,
+              precio: l.precio_unitario != null ? String(l.precio_unitario) : "",
+              item_id: l.item_id ?? 0,
+              incluida: true,
+              contenido: l.contenido,
+              unidad_contenido: l.unidad_contenido,
+              cantidad_real:
+                item && uds > 0
+                  ? String(calcularCantidadReal(uds, l.contenido, l.unidad_contenido, l.unidad_linea, item.unidad_base) ?? uds)
+                  : "",
+              iva_pct: l.iva_pct,
+              importe_con_iva: l.importe_con_iva,
+              precio_con_iva: false,
+            });
+          }
+        } catch (e) {
+          errores.push(`${ruta.split(/[\\/]/).pop()}: ${e}`);
+        }
+      }
+
+      // Reconciliación de IVA con los totales del pie del documento:
+      // si la suma de los importes impreso coincide con el TOTAL (con IVA)
+      // pero no con la Base, los precios unitarios ya llevan IVA incluido
+      if (cabecera?.total_base != null && cabecera.total_con_iva != null) {
+        const suma = filas.reduce(
+          (s, f) => s + (parseFloat(f.cantidad) || 0) * (parseFloat(f.precio) || 0),
+          0
+        );
+        const conIva = cabecera.total_con_iva;
+        const base = cabecera.total_base;
+        const coincideCon = Math.abs(suma - conIva) <= Math.max(0.05, conIva * 0.01);
+        const coincideBase = Math.abs(suma - base) <= Math.max(0.05, base * 0.01);
+        if (coincideCon && !coincideBase) {
+          const ivaGlobal = Math.round((conIva / base - 1) * 1000) / 10;
+          for (const f of filas) {
+            f.precio_con_iva = true;
+            if (f.iva_pct == null) f.iva_pct = ivaGlobal;
+          }
+        }
+      }
+
+      if (filas.length === 0) {
+        alert(
+          errores.length > 0
+            ? `No se pudo leer ningún documento:\n${errores.join("\n")}`
+            : "No se han detectado líneas de producto (¿PDF escaneado? Hazle una foto y súbela como imagen)."
+        );
+        return;
+      }
+      if (errores.length > 0) {
+        alert(`Estos documentos no se pudieron leer:\n${errores.join("\n")}`);
+      }
+
+      setRevision(filas);
+      setCabeceraDoc(cabecera);
+      setDestinoDoc(destino);
+    } catch (e) {
+      alert("Error al seleccionar los documentos: " + e);
+    } finally {
+      setCargandoDoc(false);
+    }
+  };
+
+  const insertarRevision = async () => {
+    if (!revision) return;
+    const validas = revision.filter((f) => f.incluida);
+    if (validas.some((f) => !f.item_id)) {
+      alert("Selecciona el artículo en todas las líneas marcadas.");
+      return;
+    }
+    if (validas.some((f) => !(parseFloat(f.cantidad) > 0) || !(parseFloat(f.cantidad_real || "0") > 0))) {
+      alert("Introduce la cantidad en todas las líneas marcadas.");
+      return;
+    }
+
+    const preparar = (f: FilaRevision) => {
+      const item = todosItems.find((i) => i.id === f.item_id)!;
+      const uds = parseFloat(f.cantidad) || 0;
+      const precio = parseFloat(f.precio) || 0;
+      // Cantidad real en la unidad del artículo (uds × presentación)
+      const cantBase = parseFloat(f.cantidad_real) || uds;
+      // Coste sin IVA: si los precios unitarios del documento ya lo incluían,
+      // se divide por el tipo detectado (reconciliado con Base/TOTAL del pie)
+      let total = uds * precio;
+      if (f.precio_con_iva && f.iva_pct != null && f.iva_pct > 0) {
+        total = total / (1 + f.iva_pct / 100);
+      }
+      total = Math.round(total * 10000) / 10000;
+      return { item, uds, cantBase, total };
+    };
+
+    if (destinoDoc === "form") {
+      // Cabecera detectada (solo albarán nuevo)
+      if (!editingId && cabeceraDoc) {
+        if (cabeceraDoc.numero && !watch("numero_albaran")) setValue("numero_albaran", cabeceraDoc.numero);
+        if (cabeceraDoc.fecha) setValue("fecha_recepcion", cabeceraDoc.fecha);
+        if (!watch("total")) {
+          const totalDoc = cabeceraDoc.total_con_iva ?? cabeceraDoc.total_base;
+          if (totalDoc != null) setValue("total", totalDoc.toFixed(2));
+        }
+        if (cabeceraDoc.proveedor_texto) {
+          const m = mejorCoincidencia(
+            cabeceraDoc.proveedor_texto,
+            proveedores.map((p) => ({ id: p.id, nombre: p.nombre }))
+          );
+          if (m) setValue("proveedor_id", String(m.id));
+        }
+      }
+      setLineasTemp((prev) => [
+        ...prev,
+        ...validas.map((f) => {
+          const p = preparar(f);
+          return {
+            ingrediente_id: p.item.id,
+            nombre: p.item.nombre,
+            unidad: p.item.unidad_base,
+            cantidad: p.cantBase,
+            coste_total: p.total,
+          };
+        }),
+      ]);
+      setRevision(null);
+      return;
+    }
+
+    if (!selectedAlbaran) return;
+    try {
+      for (const f of validas) {
+        const p = preparar(f);
+        await invoke("add_albaran_detalle", {
+          input: {
+            albaran_id: selectedAlbaran.id,
+            ingrediente_id: p.item.id,
+            cantidad: p.cantBase,
+            unidad: p.item.unidad_base,
+            precio_unitario: p.cantBase > 0 ? p.total / p.cantBase : 0,
+            subtotal: p.total,
+          },
+        });
+      }
+      await loadDetalles(selectedAlbaran.id);
+      setRevision(null);
+    } catch (e) {
+      alert("Error al insertar las líneas: " + e);
+    }
+  };
+
   const onSubmitDetalle = async (data: DetalleFormData) => {
     if (!selectedAlbaran) return;
     try {
-      const ingrediente = ingredientes.find((i) => i.id === parseInt(data.ingrediente_id));
+      const todos = [...ingredientes, ...envases, ...bebidas];
+      const ingrediente = todos.find((i) => i.id === data.ingrediente_id);
       const cantidad = parseFloat(data.cantidad);
       const costeTotal = parseFloat(data.coste_total);
       const precioUnitario = cantidad > 0 ? costeTotal / cantidad : 0;
@@ -232,7 +459,7 @@ export default function Albaranes() {
       await invoke("add_albaran_detalle", {
         input: {
           albaran_id: selectedAlbaran.id,
-          ingrediente_id: parseInt(data.ingrediente_id),
+          ingrediente_id: data.ingrediente_id,
           cantidad,
           unidad: ingrediente?.unidad_base ?? "ud",
           precio_unitario: precioUnitario,
@@ -349,18 +576,30 @@ export default function Albaranes() {
 
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Detalle del albarán</h3>
-          {!showDetalleForm && !selectedAlbaran.procesado && (
-            <button
-              onClick={() => {
-                resetDetalle();
-                setShowDetalleForm(true);
-              }}
-              className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Plus size={18} />
-              Añadir Línea
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {!selectedAlbaran.procesado && (
+              <button
+                onClick={() => subirDocumento("albaran")}
+                disabled={cargandoDoc}
+                className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              >
+                {cargandoDoc ? <Loader2 size={18} className="animate-spin" /> : <FileUp size={18} />}
+                {cargandoDoc ? "Leyendo..." : "Subir fotos/PDF"}
+              </button>
+            )}
+            {!showDetalleForm && !selectedAlbaran.procesado && (
+              <button
+                onClick={() => {
+                  resetDetalle();
+                  setShowDetalleForm(true);
+                }}
+                className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plus size={18} />
+                Añadir Línea
+              </button>
+            )}
+          </div>
         </div>
 
         {showDetalleForm && (
@@ -513,6 +752,15 @@ export default function Albaranes() {
             </table>
           )}
         </div>
+        {revision && (
+          <ModalRevision
+            filas={revision}
+            onChange={(next) => setRevision(next)}
+            items={todosItems}
+            onInsertar={insertarRevision}
+            onCancelar={() => setRevision(null)}
+          />
+        )}
       </div>
     );
   }
@@ -599,10 +847,21 @@ export default function Albaranes() {
             <div className="md:col-span-2 border-t pt-4">
               <div className="flex items-center justify-between mb-3">
                 <label className="text-sm font-semibold text-gray-700">Líneas del albarán</label>
-                <button type="button" onClick={() => setShowAddLinea(true)}
-                  className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
-                  <Plus size={16} /> Añadir línea
-                </button>
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => subirDocumento("form")}
+                    disabled={cargandoDoc}
+                    className="flex items-center gap-1 text-sm text-emerald-700 hover:text-emerald-900 disabled:opacity-50"
+                  >
+                    {cargandoDoc ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
+                    {cargandoDoc ? "Leyendo..." : "Subir fotos/PDF"}
+                  </button>
+                  <button type="button" onClick={() => setShowAddLinea(true)}
+                    className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800">
+                    <Plus size={16} /> Añadir línea
+                  </button>
+                </div>
               </div>
 
               {showAddLinea && (
@@ -757,6 +1016,237 @@ export default function Albaranes() {
           </table>
           </>
         )}
+      </div>
+      {revision && (
+        <ModalRevision
+          filas={revision}
+          onChange={(next) => setRevision(next)}
+          items={todosItems}
+          onInsertar={insertarRevision}
+          onCancelar={() => setRevision(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ModalRevision({
+  filas,
+  onChange,
+  items,
+  onInsertar,
+  onCancelar,
+}: {
+  filas: FilaRevision[];
+  onChange: (next: FilaRevision[]) => void;
+  items: ItemCatalogo[];
+  onInsertar: () => void;
+  onCancelar: () => void;
+}) {
+  const recalcReal = (f: FilaRevision, patch: Partial<FilaRevision>): Partial<FilaRevision> => {
+    const merged = { ...f, ...patch };
+    const item = items.find((i) => i.id === merged.item_id);
+    const uds = parseFloat(merged.cantidad);
+    const real =
+      item && uds > 0
+        ? calcularCantidadReal(
+            uds,
+            merged.contenido,
+            merged.unidad_contenido,
+            merged.unidad_linea,
+            item.unidad_base
+          )
+        : null;
+    if (real == null) return patch;
+    return { ...patch, cantidad_real: String(real) };
+  };
+
+  const updateFila = (uid: number, patch: Partial<FilaRevision>) =>
+    onChange(
+      filas.map((f) => {
+        if (f.uid !== uid) return f;
+        // Solo se recalcula la cantidad real al cambiar uds o artículo;
+        // una edición manual de "Real" se respeta hasta el próximo cambio
+        const tocaCalculo = "cantidad" in patch || "item_id" in patch;
+        return tocaCalculo ? { ...f, ...recalcReal(f, patch) } : { ...f, ...patch };
+      })
+    );
+
+  const incluidas = filas.filter((f) => f.incluida);
+  const total = incluidas.reduce(
+    (s, f) => s + (parseFloat(f.cantidad) || 0) * (parseFloat(f.precio) || 0),
+    0
+  );
+  const pendientes = incluidas.filter(
+    (f) => !f.item_id || !(parseFloat(f.cantidad) > 0) || !(parseFloat(f.cantidad_real || "0") > 0)
+  ).length;
+
+  const iconoTipo = (t: string) => (t === "envase" ? "📦" : t === "bebida" ? "🥤" : "🥕");
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg w-full max-w-5xl max-h-[85vh] flex flex-col shadow-xl">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-800">Revisión del documento</h3>
+            <p className="text-xs text-gray-500">
+              {filas.length} líneas detectadas — desmarca las que no correspondan y asigna los artículos
+            </p>
+          </div>
+          <button onClick={onCancelar} className="text-gray-400 hover:text-gray-600">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4">
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-xs font-medium text-gray-500 border-b">
+                <th className="w-8 pb-2"></th>
+                <th className="pb-2">Descripción</th>
+                <th className="pb-2 w-52">Artículo</th>
+                <th className="pb-2 w-24 text-right" title="Cantidad del documento">Uds</th>
+                <th
+                  className="pb-2 w-28 text-right"
+                  title="Cantidad real en la unidad del artículo (uds × presentación del envase)"
+                >
+                  Real
+                </th>
+                <th className="pb-2 w-24 text-right">Precio €</th>
+                <th className="pb-2 w-28 text-right">Subtotal</th>
+                <th className="w-8 pb-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {filas.map((f) => {
+                const subtotal = (parseFloat(f.cantidad) || 0) * (parseFloat(f.precio) || 0);
+                const itemFila = items.find((i) => i.id === f.item_id);
+                return (
+                  <tr key={f.uid} className={f.incluida ? "" : "opacity-40"}>
+                    <td className="py-1.5">
+                      <input
+                        type="checkbox"
+                        checked={f.incluida}
+                        onChange={(e) => updateFila(f.uid, { incluida: e.target.checked })}
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <input
+                        value={f.descripcion}
+                        onChange={(e) => updateFila(f.uid, { descripcion: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm focus:ring-1 focus:ring-blue-500"
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      <SearchableSelect
+                        options={items.map((i) => ({
+                          value: i.id,
+                          label: `${iconoTipo(i.tipo)} ${i.nombre} (${i.unidad_base})`,
+                        }))}
+                        value={f.item_id}
+                        onChange={(val) => updateFila(f.uid, { item_id: val })}
+                        placeholder={f.item_id ? "..." : "Seleccionar..."}
+                      />
+                      {f.incluida && !f.item_id && (
+                        <p className="text-[11px] text-red-500 mt-0.5">Obligatorio</p>
+                      )}
+                    </td>
+                    <td className="py-1.5 pr-1">
+                      <div className="flex items-center justify-end gap-1">
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={f.cantidad}
+                          onChange={(e) => updateFila(f.uid, { cantidad: e.target.value })}
+                          className="w-16 border border-gray-200 rounded px-2 py-1 text-sm text-right"
+                          title="Cantidad del documento"
+                        />
+                        <span className="text-[11px] text-gray-400 w-5" title="Unidad detectada en el documento">
+                          {f.unidad_linea ?? ""}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 pr-1">
+                      <div className="flex items-center justify-end gap-1">
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={f.cantidad_real}
+                          onChange={(e) => updateFila(f.uid, { cantidad_real: e.target.value })}
+                          className="w-16 border border-amber-200 bg-amber-50 rounded px-2 py-1 text-sm text-right"
+                          title="Cantidad real en la unidad del artículo (uds × presentación)"
+                        />
+                        <span className="text-[11px] text-gray-400 w-6">{itemFila?.unidad_base ?? ""}</span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 pr-1">
+                      <input
+                        type="number"
+                        step="0.0001"
+                        value={f.precio}
+                        onChange={(e) => updateFila(f.uid, { precio: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2 py-1 text-sm text-right"
+                      />
+                    </td>
+                    <td className="py-1.5 pr-2 text-sm text-gray-700 text-right font-mono">
+                      {subtotal.toFixed(2)} €
+                      {(f.importe_con_iva || f.precio_con_iva) && f.iva_pct != null && (
+                        <span
+                          className="block text-[10px] text-amber-700 font-sans"
+                          title={
+                            f.precio_con_iva
+                              ? `Los precios unitarios llevan IVA (${f.iva_pct}%) incluido: el coste grabado se normaliza a sin IVA`
+                              : `El importe impreso lleva IVA (${f.iva_pct}%) incluido; el precio unitario no`
+                          }
+                        >
+                          {f.precio_con_iva ? `precios c/IVA ${f.iva_pct}%` : `importe c/IVA ${f.iva_pct}%`}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5">
+                      <button
+                        onClick={() => onChange(filas.filter((x) => x.uid !== f.uid))}
+                        className="text-red-400 hover:text-red-600"
+                        title="Quitar línea"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {filas.length === 0 && (
+            <p className="text-sm text-gray-500 text-center py-6">No queda ninguna línea</p>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+          <div className="text-sm">
+            {pendientes > 0 ? (
+              <span className="text-red-600">{pendientes} líneas sin artículo/cantidad</span>
+            ) : (
+              <span className="text-gray-500">{incluidas.length} líneas a insertar</span>
+            )}
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-semibold text-gray-800">Total: {total.toFixed(2)} €</span>
+            <button
+              onClick={onCancelar}
+              className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={onInsertar}
+              disabled={incluidas.length === 0 || pendientes > 0}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
+            >
+              Insertar {incluidas.length} líneas
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

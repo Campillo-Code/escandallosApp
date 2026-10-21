@@ -17,6 +17,7 @@ interface InventarioItem {
   stock_minimo: number;
   unidad: string;
   ubicacion: string | null;
+  tipo: string | null;
 }
 
 interface Ingrediente {
@@ -41,7 +42,7 @@ interface Movimiento {
 }
 
 const stockSchema = z.object({
-  ingrediente_id: z.string().min(1, "Selecciona un ingrediente"),
+  ingrediente_id: z.number({ error: "Selecciona un artículo" }).min(1, "Selecciona un artículo"),
   stock_actual: z.string().min(1, "El stock es obligatorio"),
   stock_minimo: z.string().min(1, "El stock mínimo es obligatorio"),
   ubicacion: z.string().optional(),
@@ -50,7 +51,7 @@ const stockSchema = z.object({
 type StockFormData = z.infer<typeof stockSchema>;
 
 const movimientoSchema = z.object({
-  ingrediente_id: z.string().min(1, "Selecciona un ingrediente"),
+  ingrediente_id: z.number({ error: "Selecciona un artículo" }).min(1, "Selecciona un artículo"),
   tipo: z.string().min(1, "Selecciona un tipo"),
   cantidad: z.string().min(1, "La cantidad es obligatoria"),
   referencia: z.string().optional(),
@@ -148,12 +149,13 @@ export default function Inventario() {
 
   const onSubmitStock = async (data: StockFormData) => {
     try {
+      const todos = [...ingredientes, ...envases, ...bebidas];
       await invoke("upsert_inventario", {
         input: {
-          ingrediente_id: parseInt(data.ingrediente_id),
+          ingrediente_id: data.ingrediente_id,
           stock_actual: parseFloat(data.stock_actual),
           stock_minimo: parseFloat(data.stock_minimo),
-          unidad: ingredientes.find((i) => i.id === parseInt(data.ingrediente_id))?.unidad_base ?? "ud",
+          unidad: todos.find((i) => i.id === data.ingrediente_id)?.unidad_base ?? "ud",
           ubicacion: data.ubicacion || null,
         },
       });
@@ -169,7 +171,7 @@ export default function Inventario() {
     try {
       await invoke("add_inventario_movimiento", {
         input: {
-          ingrediente_id: parseInt(data.ingrediente_id),
+          ingrediente_id: data.ingrediente_id,
           tipo: data.tipo,
           cantidad: parseFloat(data.cantidad),
           referencia: data.referencia || null,
@@ -437,15 +439,13 @@ export default function Inventario() {
                     const q = searchTerm.toLowerCase();
                     if (q && !inv.ingrediente_nombre?.toLowerCase().includes(q)) return false;
                     if (tipoFilter !== "todos") {
-                      const ing = ingredientes.find(i => i.id === inv.ingrediente_id);
-                      const tipo = ing?.tipo ?? "ingrediente";
+                      const tipo = inv.tipo ?? "ingrediente";
                       if (tipo !== tipoFilter) return false;
                     }
                     return true;
                   }).map((inv) => {
                     const isLow = inv.stock_actual <= inv.stock_minimo;
-                    const ing = ingredientes.find(i => i.id === inv.ingrediente_id);
-                    const tipo = ing?.tipo ?? "ingrediente";
+                    const tipo = inv.tipo ?? "ingrediente";
                     return (
                       <tr key={inv.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm font-medium text-gray-800">{inv.ingrediente_nombre}</td>

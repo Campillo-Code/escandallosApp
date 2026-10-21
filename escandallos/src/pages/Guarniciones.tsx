@@ -17,7 +17,7 @@ const guarnicionSchema = z.object({
 type GuarnicionFormData = z.infer<typeof guarnicionSchema>;
 
 const ingredienteSchema = z.object({
-  ingrediente_id: z.string().min(1, "Selecciona un ingrediente"),
+  ingrediente_id: z.number({ error: "Selecciona un ingrediente" }).min(1, "Selecciona un ingrediente"),
   cantidad: z.string().min(1, "La cantidad es obligatoria"),
   unidad: z.string().min(1, "La unidad es obligatoria"),
   merma_porcentaje: z.string().optional(),
@@ -81,7 +81,7 @@ export default function Guarniciones() {
     if (!selectedGuarnicion) return;
     try {
       await invoke("add_guarnicion_ingrediente", {
-        input: { guarnicion_id: selectedGuarnicion.id, ingrediente_id: parseInt(data.ingrediente_id), cantidad: parseFloat(data.cantidad), unidad: data.unidad, merma_porcentaje: parseFloat(data.merma_porcentaje ?? "0") || 0 }
+        input: { guarnicion_id: selectedGuarnicion.id, ingrediente_id: data.ingrediente_id, cantidad: parseFloat(data.cantidad), unidad: data.unidad, merma_porcentaje: parseFloat(data.merma_porcentaje ?? "0") || 0 }
       });
       setShowIngForm(false); resetIng(); loadGuarnIngred(selectedGuarnicion.id); loadCoste(selectedGuarnicion.id);
     } catch (e) { alert("Error: " + e); }

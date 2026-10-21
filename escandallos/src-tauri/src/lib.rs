@@ -1168,15 +1168,91 @@ async fn delete_albaran_detalle(id: i64) -> Result<(), String> {
     Ok(())
 }
 
+fn convertir_unidad(cantidad: f64, desde: &str, hacia: &str) -> f64 {
+    if (desde == "kg" && hacia == "g") || (desde == "l" && hacia == "ml") {
+        cantidad * 1000.0
+    } else if (desde == "g" && hacia == "kg") || (desde == "ml" && hacia == "l") {
+        cantidad / 1000.0
+    } else {
+        cantidad
+    }
+}
+
+async fn aplicar_movimiento_stock(
+    tx: &mut sqlx::Transaction<'_, sqlx::MySql>,
+    ingrediente_id: i64,
+    unidad_origen: &str,
+    cantidad: f64,
+    restar: bool,
+    referencia: &str,
+    receta_id: Option<i64>,
+    notas: &str,
+) -> Result<(), String> {
+    let inv: Option<(i64, String)> = sqlx::query_as("SELECT id, unidad FROM inventario WHERE ingrediente_id = ?")
+        .bind(ingrediente_id)
+        .fetch_optional(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let (inv_id, unidad_destino) = match inv {
+        Some((id, u)) => (id, u),
+        None => {
+            let ub: Option<String> = sqlx::query_scalar("SELECT unidad_base FROM ingredientes WHERE id = ?")
+                .bind(ingrediente_id)
+                .fetch_one(&mut **tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            let ub = ub.unwrap_or_else(|| "ud".to_string());
+            let res = sqlx::query("INSERT INTO inventario (ingrediente_id, stock_actual, stock_minimo, unidad) VALUES (?, 0, 0, ?)")
+                .bind(ingrediente_id)
+                .bind(&ub)
+                .execute(&mut **tx)
+                .await
+                .map_err(|e| e.to_string())?;
+            (res.last_insert_id() as i64, ub)
+        }
+    };
+
+    let cantidad_destino = convertir_unidad(cantidad, unidad_origen, &unidad_destino);
+    let delta = if restar { -cantidad_destino } else { cantidad_destino };
+
+    sqlx::query("UPDATE inventario SET stock_actual = stock_actual + ?, ultima_actualizacion = CURRENT_TIMESTAMP WHERE id = ?")
+        .bind(delta)
+        .bind(inv_id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let tipo = if restar { "salida" } else { "ajuste" };
+    sqlx::query("INSERT INTO inventario_movimientos (ingrediente_id, tipo, cantidad, referencia, receta_id, notas) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(ingrediente_id)
+        .bind(tipo)
+        .bind(cantidad_destino)
+        .bind(referencia)
+        .bind(receta_id)
+        .bind(notas)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
 
-    let proveedor_id: i64 = sqlx::query_scalar("SELECT proveedor_id FROM albaranes WHERE id = ?")
-        .bind(albaran_id)
-        .fetch_one(pool)
-        .await
-        .map_err(|e| e.to_string())?;
+    let (proveedor_id, procesado, fecha_recepcion): (i64, bool, String) = sqlx::query_as(
+        "SELECT proveedor_id, COALESCE(procesado, 0), DATE_FORMAT(fecha_recepcion, '%Y-%m-%d') FROM albaranes WHERE id = ?",
+    )
+    .bind(albaran_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if procesado {
+        return Ok(());
+    }
 
     let detalles_rows = sqlx::query(
         "SELECT ad.id, ad.albaran_id, ad.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(ad.cantidad AS DOUBLE) AS cantidad, ad.unidad, CAST(ad.precio_unitario AS DOUBLE) AS precio_unitario, CAST(ad.subtotal AS DOUBLE) AS subtotal, CAST(ad.precio_anterior AS DOUBLE) AS precio_anterior FROM albaranes_detalle ad INNER JOIN ingredientes i ON ad.ingrediente_id = i.id WHERE ad.albaran_id = ?"
@@ -1288,6 +1364,26 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
+
+        // Crear lote de trazabilidad para este producto
+        let prefix = format!("L-{}-", fecha_recepcion.replace('-', ""));
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM lotes_ingredientes WHERE numero_lote LIKE ?")
+            .bind(format!("{}%", prefix))
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        let numero_lote = format!("{}{:03}", prefix, count + 1);
+        sqlx::query("INSERT INTO lotes_ingredientes (ingrediente_id, proveedor_id, numero_lote, fecha_recepcion, cantidad_recibida, unidad, albaran_id) VALUES (?, ?, ?, ?, ?, ?, ?)")
+            .bind(detalle.ingrediente_id)
+            .bind(proveedor_id)
+            .bind(&numero_lote)
+            .bind(&fecha_recepcion)
+            .bind(detalle.cantidad)
+            .bind(&detalle.unidad)
+            .bind(albaran_id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     sqlx::query("UPDATE albaranes SET procesado = 1 WHERE id = ?")
@@ -1297,6 +1393,174 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+// ========================================
+// LECTURA DE DOCUMENTOS (OCR / PDF)
+// ========================================
+
+struct CandidatoOcr {
+    programa: std::path::PathBuf,
+    ld_library_path: Option<String>,
+}
+
+fn rutas_tesseract(app: &tauri::AppHandle) -> Vec<std::path::PathBuf> {
+    let mut rutas = Vec::new();
+    if let Ok(res) = app.path().resource_dir() {
+        rutas.push(res.join("bin").join("tesseract"));
+        rutas.push(res.join("tesseract"));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            rutas.push(dir.join("bin").join("tesseract"));
+            rutas.push(dir.join("tesseract"));
+        }
+    }
+    // Origen de código: tessdata empaquetado y runtime nativo de desarrollo
+    if let Some(manifest) = option_env!("CARGO_MANIFEST_DIR") {
+        let base = std::path::PathBuf::from(manifest).join("bin");
+        rutas.push(base.join("tesseract"));
+        rutas.push(base.join("tesseract-linux"));
+    }
+    rutas
+}
+
+fn candidatos_ocr(app: &tauri::AppHandle) -> Vec<CandidatoOcr> {
+    let rutas = rutas_tesseract(app);
+    let mut out: Vec<CandidatoOcr> = Vec::new();
+
+    if cfg!(windows) {
+        for r in &rutas {
+            let exe = r.join("tesseract.exe");
+            if exe.exists() {
+                out.push(CandidatoOcr { programa: exe, ld_library_path: None });
+            }
+        }
+        out.push(CandidatoOcr {
+            programa: std::path::PathBuf::from("tesseract"),
+            ld_library_path: None,
+        });
+    } else {
+        // Tesseract del sistema (apt install tesseract-ocr ...)
+        out.push(CandidatoOcr {
+            programa: std::path::PathBuf::from("tesseract"),
+            ld_library_path: None,
+        });
+        // Runtime empaquetado (desarrollo sin instalar nada)
+        for r in &rutas {
+            let bin = r.join("usr").join("bin").join("tesseract");
+            if bin.exists() {
+                let lib = r.join("usr").join("lib").join("x86_64-linux-gnu");
+                let previo = std::env::var("LD_LIBRARY_PATH").unwrap_or_default();
+                let ld = if previo.is_empty() {
+                    lib.to_string_lossy().to_string()
+                } else {
+                    format!("{}:{}", lib.to_string_lossy(), previo)
+                };
+                out.push(CandidatoOcr { programa: bin, ld_library_path: Some(ld) });
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn tessdata_dir(app: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    rutas_tesseract(app)
+        .into_iter()
+        .map(|r| r.join("tessdata"))
+        .find(|t| t.join("spa.traineddata").exists() || t.join("eng.traineddata").exists())
+}
+
+#[tauri::command]
+async fn leer_documento_albaran(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    match ext.as_str() {
+        "pdf" => {
+            let p = path.clone();
+            let texto = tokio::task::spawn_blocking(move || pdf_extract::extract_text(&p))
+                .await
+                .map_err(|e| e.to_string())?
+                .map_err(|e| format!("No se pudo extraer el texto del PDF (¿está escaneado/sin texto?): {}", e))?;
+            Ok(texto)
+        }
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "tif" | "tiff" => {
+            let candidatos = candidatos_ocr(&app);
+            if candidatos.is_empty() {
+                return Err("No se encontró el motor de OCR.".into());
+            }
+
+            let mut intentos_tess: Vec<std::path::PathBuf> = Vec::new();
+            if let Some(td) = tessdata_dir(&app) {
+                intentos_tess.push(td.clone());
+                if let Some(p) = td.parent() {
+                    intentos_tess.push(p.to_path_buf());
+                }
+            }
+            intentos_tess.push(std::path::PathBuf::new()); // sin --tessdata-dir
+
+            let p = path.clone();
+            let candidatos: Vec<(String, Option<String>, std::path::PathBuf)> = candidatos
+                .into_iter()
+                .map(|c| {
+                    (
+                        c.programa.to_string_lossy().to_string(),
+                        c.ld_library_path,
+                        c.programa,
+                    )
+                })
+                .collect();
+
+            let resultado = tokio::task::spawn_blocking(move || {
+                let mut ultimo_error = String::new();
+                for cand in &candidatos {
+                    for tdir in &intentos_tess {
+                        let mut cmd = std::process::Command::new(&cand.2);
+                        cmd.args([&p, "stdout", "-l", "spa+eng", "--psm", "6"]);
+                        if !tdir.as_os_str().is_empty() {
+                            cmd.arg("--tessdata-dir").arg(tdir);
+                        }
+                        if let Some(ld) = &cand.1 {
+                            cmd.env("LD_LIBRARY_PATH", ld);
+                        }
+                        match cmd.output() {
+                            Ok(o) if o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty() => {
+                                return Ok(String::from_utf8_lossy(&o.stdout).to_string());
+                            }
+                            Ok(o) => {
+                                let err = String::from_utf8_lossy(&o.stderr).trim().to_string();
+                                if !err.is_empty() {
+                                    ultimo_error = err;
+                                }
+                            }
+                            Err(e) => {
+                                ultimo_error = format!("{}: {}", cand.0, e);
+                            }
+                        }
+                    }
+                }
+                if !ultimo_error.is_empty() {
+                    let pista = if !cfg!(windows) {
+                        "\n\nSi no tienes tesseract instalado: sudo apt install tesseract-ocr tesseract-ocr-spa"
+                    } else {
+                        ""
+                    };
+                    Err(format!("No se pudo ejecutar el OCR. Último error: {}{}", ultimo_error, pista))
+                } else {
+                    Ok(String::new())
+                }
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
+            resultado
+        }
+        _ => Err("Formato no soportado. Usa PNG, JPG, WEBP, BMP, TIFF o PDF.".into()),
+    }
 }
 
 // ========================================
@@ -1313,6 +1577,7 @@ pub struct Inventario {
     pub stock_minimo: f64,
     pub unidad: String,
     pub ubicacion: Option<String>,
+    pub tipo: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1352,7 +1617,7 @@ pub struct InventarioMovimientoInput {
 #[tauri::command]
 async fn get_inventario() -> Result<Vec<Inventario>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT inv.id, inv.ingrediente_id, i.nombre AS ingrediente_nombre, i.unidad_base, CAST(inv.stock_actual AS DOUBLE) AS stock_actual, CAST(inv.stock_minimo AS DOUBLE) AS stock_minimo, inv.unidad, inv.ubicacion FROM inventario inv INNER JOIN ingredientes i ON inv.ingrediente_id = i.id ORDER BY i.nombre";
+    let sql = "SELECT inv.id, inv.ingrediente_id, i.nombre AS ingrediente_nombre, i.unidad_base, CAST(inv.stock_actual AS DOUBLE) AS stock_actual, CAST(inv.stock_minimo AS DOUBLE) AS stock_minimo, inv.unidad, inv.ubicacion, i.tipo FROM inventario inv INNER JOIN ingredientes i ON inv.ingrediente_id = i.id ORDER BY i.nombre";
     let rows = sqlx::query(sql).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<Inventario> = rows.iter().map(|r| {
         Inventario {
@@ -1364,6 +1629,7 @@ async fn get_inventario() -> Result<Vec<Inventario>, String> {
             stock_minimo: r.try_get::<f64, _>("stock_minimo").unwrap_or(0.0),
             unidad: r.try_get("unidad").unwrap_or_default(),
             ubicacion: r.try_get("ubicacion").ok().flatten(),
+            tipo: r.try_get("tipo").ok().flatten(),
         }
     }).collect();
     Ok(result)
@@ -2569,25 +2835,95 @@ async fn get_produccion(fecha_desde: Option<String>, fecha_hasta: Option<String>
 #[tauri::command]
 async fn create_produccion(input: ProduccionInput, detalles: Vec<ProduccionDetalleInput>) -> Result<i64, String> {
     let pool = &db::get_pool();
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
     let result = sqlx::query("INSERT INTO produccion (receta_id, fecha_elaboracion, cantidad_producida, lote_producto, fecha_caducidad, responsable, notas) VALUES (?, ?, ?, ?, ?, ?, ?)")
         .bind(input.receta_id).bind(&input.fecha_elaboracion).bind(input.cantidad_producida)
         .bind(&input.lote_producto).bind(&input.fecha_caducidad)
         .bind(&input.responsable).bind(&input.notas)
-        .execute(pool).await.map_err(|e| e.to_string())?;
+        .execute(&mut *tx).await.map_err(|e| e.to_string())?;
     let produccion_id = result.last_insert_id() as i64;
+
     for d in &detalles {
         sqlx::query("INSERT INTO produccion_detalle (produccion_id, lote_ingrediente_id, cantidad_utilizada) VALUES (?, ?, ?)")
             .bind(produccion_id).bind(d.lote_ingrediente_id).bind(d.cantidad_utilizada)
-            .execute(pool).await.map_err(|e| e.to_string())?;
+            .execute(&mut *tx).await.map_err(|e| e.to_string())?;
+
+        if d.cantidad_utilizada <= 0.0 {
+            continue;
+        }
+
+        let lote: Option<(i64, String)> = sqlx::query_as("SELECT ingrediente_id, unidad FROM lotes_ingredientes WHERE id = ?")
+            .bind(d.lote_ingrediente_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some((ingrediente_id, unidad_lote)) = lote {
+            aplicar_movimiento_stock(
+                &mut tx,
+                ingrediente_id,
+                &unidad_lote,
+                d.cantidad_utilizada,
+                true,
+                &format!("Producción {}", input.lote_producto),
+                Some(input.receta_id),
+                "Consumo por producción",
+            )
+            .await?;
+        }
     }
+
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(produccion_id)
 }
 
 #[tauri::command]
-async fn delete_produccion(id: i64) -> Result<(), String> {
+async fn delete_produccion(id: i64, restaurar_stock: bool) -> Result<(), String> {
     let pool = &db::get_pool();
-    sqlx::query("DELETE FROM produccion_detalle WHERE produccion_id = ?").bind(id).execute(pool).await.map_err(|e| e.to_string())?;
-    sqlx::query("DELETE FROM produccion WHERE id = ?").bind(id).execute(pool).await.map_err(|e| e.to_string())?;
+    let mut tx = pool.begin().await.map_err(|e| e.to_string())?;
+
+    let prod: Option<(i64, String)> = sqlx::query_as("SELECT COALESCE(receta_id, 0), COALESCE(lote_producto, '') FROM produccion WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if restaurar_stock {
+        if let Some((receta_id, lote_producto)) = prod {
+            let rows = sqlx::query(
+                "SELECT l.ingrediente_id, l.unidad, CAST(pd.cantidad_utilizada AS DOUBLE) AS cantidad FROM produccion_detalle pd INNER JOIN lotes_ingredientes l ON pd.lote_ingrediente_id = l.id WHERE pd.produccion_id = ?",
+            )
+            .bind(id)
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(|e| e.to_string())?;
+
+            for r in &rows {
+                let ingrediente_id: i64 = r.try_get("ingrediente_id").map_err(|e| e.to_string())?;
+                let unidad: String = r.try_get("unidad").map_err(|e| e.to_string())?;
+                let cantidad: f64 = r.try_get::<f64, _>("cantidad").map_err(|e| e.to_string())?;
+                if cantidad <= 0.0 {
+                    continue;
+                }
+                aplicar_movimiento_stock(
+                    &mut tx,
+                    ingrediente_id,
+                    &unidad,
+                    cantidad,
+                    false,
+                    &format!("Borrado de producción {}", lote_producto),
+                    Some(receta_id),
+                    "Devolución por borrado de producción",
+                )
+                .await?;
+            }
+        }
+    }
+
+    sqlx::query("DELETE FROM produccion_detalle WHERE produccion_id = ?").bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM produccion WHERE id = ?").bind(id).execute(&mut *tx).await.map_err(|e| e.to_string())?;
+    tx.commit().await.map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -4117,6 +4453,7 @@ pub fn run() {
             add_albaran_detalle,
             delete_albaran_detalle,
             procesar_albaran,
+            leer_documento_albaran,
             get_inventario,
             upsert_inventario,
             delete_inventario,
