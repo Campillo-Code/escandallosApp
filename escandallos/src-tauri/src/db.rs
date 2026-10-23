@@ -332,6 +332,30 @@ async fn run_migrations(pool: &MySqlPool) {
         UNIQUE KEY idx_menu_fecha (fecha)
     )").execute(pool).await;
 
+    // PLANIFICACION DE MENU (sustituye al menu del dia)
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS planificacion_dia (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        fecha DATE NOT NULL,
+        cerrado TINYINT(1) NOT NULL DEFAULT 0,
+        primero_id INT NULL,
+        segundo_id INT NULL,
+        postre_id INT NULL,
+        precio_base DECIMAL(10,2) NOT NULL DEFAULT 12,
+        observaciones TEXT NULL,
+        UNIQUE KEY idx_plan_fecha (fecha)
+    )").execute(pool).await;
+    let _ = sqlx::query("CREATE TABLE IF NOT EXISTS planificacion_suelto (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        fecha DATE NOT NULL,
+        plato_caja_id INT NOT NULL,
+        UNIQUE KEY idx_plan_suelto (fecha, plato_caja_id)
+    )").execute(pool).await;
+    // Migración de datos: copiar los menús ya configurados
+    let _ = sqlx::query(
+        "INSERT IGNORE INTO planificacion_dia (fecha, cerrado, primero_id, segundo_id, postre_id, precio_base)
+         SELECT fecha, 0, primero_id, segundo_id, postre_id, precio_base FROM menu_del_dia"
+    ).execute(pool).await;
+
     // WHATSAPP PEDIDOS: Add columns if not exists
     let check_tipo: Option<(String,)> = sqlx::query_as(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'whatsapp_pedidos' AND COLUMN_NAME = 'tipo'"

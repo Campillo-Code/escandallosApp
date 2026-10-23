@@ -20,7 +20,7 @@ import Caja from "./pages/Caja";
 import PreciosCaja from "./pages/PreciosCaja";
 import PlatosCaja from "./pages/PlatosCaja";
 import Despieces from "./pages/Despieces";
-import MenuDelDia from "./pages/MenuDelDia";
+import Planificacion from "./pages/Planificacion";
 import Pedidos from "./pages/Pedidos";
 import Envases from "./pages/Envases";
 import Bebidas from "./pages/Bebidas";
@@ -130,7 +130,7 @@ function App() {
           {/* Caja */}
           {(() => {
             const isOpen = openSections["caja"];
-            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja" || location.pathname === "/menu-del-dia" || location.pathname === "/pedidos";
+            const hasActive = location.pathname === "/caja" || location.pathname === "/precios-caja" || location.pathname === "/platos-caja" || location.pathname === "/planificacion" || location.pathname === "/pedidos";
             return (
               <div>
                 <button
@@ -165,12 +165,12 @@ function App() {
                           ? "bg-green-600 text-white"
                           : "text-slate-400 hover:bg-slate-700 hover:text-white"
                       }`}>Platos</a>
-                    <a href="/menu-del-dia"
+                    <a href="/planificacion"
                       className={`block px-3 py-1.5 rounded text-sm transition-colors ${
-                        location.pathname === "/menu-del-dia"
+                        location.pathname === "/planificacion"
                           ? "bg-green-600 text-white"
                           : "text-slate-400 hover:bg-slate-700 hover:text-white"
-                      }`}>Menú del Día</a>
+                      }`}>Planificación</a>
                     <a href="/pedidos"
                       className={`block px-3 py-1.5 rounded text-sm transition-colors ${
                         location.pathname === "/pedidos"
@@ -268,7 +268,8 @@ function App() {
           <Route path="/lotes" element={<Lotes />} />
           <Route path="/produccion" element={<Produccion />} />
           <Route path="/despieces" element={<Despieces />} />
-          <Route path="/menu-del-dia" element={<MenuDelDia />} />
+          <Route path="/planificacion" element={<Planificacion />} />
+          <Route path="/menu-del-dia" element={<Planificacion />} />
           <Route path="/pedidos" element={<Pedidos />} />
         </Routes>
       </main>

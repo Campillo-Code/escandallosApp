@@ -3806,7 +3806,281 @@ async fn send_whatsapp_message_manual(telefono: String, mensaje: String) -> Resu
 }
 
 // ========================================
-// MENU DEL DIA
+// PLANIFICACION DE MENU
+// ========================================
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct PlanificacionSuelto {
+    pub id: i64,
+    pub fecha: String,
+    pub plato_caja_id: i64,
+    pub nombre: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PlanificacionDia {
+    pub id: i64,
+    pub fecha: String,
+    pub cerrado: bool,
+    pub primero_id: Option<i64>,
+    pub segundo_id: Option<i64>,
+    pub postre_id: Option<i64>,
+    pub precio_base: f64,
+    pub observaciones: Option<String>,
+    pub sueltos: Vec<PlanificacionSuelto>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanificacionDiaInput {
+    pub fecha: String,
+    pub cerrado: bool,
+    pub primero_id: Option<i64>,
+    pub segundo_id: Option<i64>,
+    pub postre_id: Option<i64>,
+    pub precio_base: f64,
+    pub observaciones: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct ResumenIngrediente {
+    pub ingrediente_id: i64,
+    pub nombre: Option<String>,
+    pub unidad_base: Option<String>,
+    pub cantidad_necesaria: f64,
+    pub stock: Option<f64>,
+    pub falta: f64,
+}
+
+fn rango_mes(mes: &str) -> (String, String) {
+    let primero = format!("{}-01", mes);
+    let partes: Vec<&str> = mes.split('-').collect();
+    let anio: i32 = partes.first().and_then(|s| s.parse().ok()).unwrap_or(2026);
+    let mes_num: u32 = partes.get(1).and_then(|s| s.parse().ok()).unwrap_or(1);
+    let (n_anio, n_mes) = if mes_num >= 12 { (anio + 1, 1) } else { (anio, mes_num + 1) };
+    let siguiente = format!("{}-{:02}-01", n_anio, n_mes);
+    (primero, siguiente)
+}
+
+#[tauri::command]
+async fn get_planificacion(mes: String) -> Result<Vec<PlanificacionDia>, String> {
+    let pool = &db::get_pool();
+    let (desde, hasta) = rango_mes(&mes);
+
+    let filas: Vec<(i64, String, bool, Option<i64>, Option<i64>, Option<i64>, f64, Option<String>)> = sqlx::query_as(
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, cerrado, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base, observaciones
+         FROM planificacion_dia WHERE fecha >= ? AND fecha < ? ORDER BY fecha"
+    ).bind(&desde).bind(&hasta).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let sueltos: Vec<PlanificacionSuelto> = sqlx::query_as(
+        "SELECT s.id, DATE_FORMAT(s.fecha, '%Y-%m-%d') AS fecha, s.plato_caja_id, p.nombre
+         FROM planificacion_suelto s LEFT JOIN caja_platos p ON p.id = s.plato_caja_id
+         WHERE s.fecha >= ? AND s.fecha < ? ORDER BY p.nombre"
+    ).bind(&desde).bind(&hasta).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut resultado: Vec<PlanificacionDia> = filas.into_iter().map(|f| PlanificacionDia {
+        id: f.0, fecha: f.1, cerrado: f.2, primero_id: f.3, segundo_id: f.4,
+        postre_id: f.5, precio_base: f.6, observaciones: f.7, sueltos: Vec::new(),
+    }).collect();
+    for s in sueltos {
+        if let Some(d) = resultado.iter_mut().find(|d| d.fecha == s.fecha) {
+            d.sueltos.push(s);
+        }
+    }
+    Ok(resultado)
+}
+
+#[tauri::command]
+async fn save_planificacion_dia(input: PlanificacionDiaInput) -> Result<i64, String> {
+    let pool = &db::get_pool();
+    sqlx::query(
+        "INSERT INTO planificacion_dia (fecha, cerrado, primero_id, segundo_id, postre_id, precio_base, observaciones)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE cerrado = VALUES(cerrado), primero_id = VALUES(primero_id), segundo_id = VALUES(segundo_id), postre_id = VALUES(postre_id), precio_base = VALUES(precio_base), observaciones = VALUES(observaciones)"
+    )
+    .bind(&input.fecha).bind(input.cerrado).bind(input.primero_id).bind(input.segundo_id)
+    .bind(input.postre_id).bind(input.precio_base).bind(&input.observaciones)
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    let id: i64 = sqlx::query_scalar("SELECT id FROM planificacion_dia WHERE fecha = ?")
+        .bind(&input.fecha).fetch_one(pool).await.map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+#[tauri::command]
+async fn add_planificacion_suelto(fecha: String, plato_caja_id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("INSERT IGNORE INTO planificacion_suelto (fecha, plato_caja_id) VALUES (?, ?)")
+        .bind(&fecha).bind(plato_caja_id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_planificacion_suelto(id: i64) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query("DELETE FROM planificacion_suelto WHERE id = ?").bind(id)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn copiar_planificacion_dia(fecha_origen: String, fecha_destino: String) -> Result<(), String> {
+    let pool = &db::get_pool();
+    let src: Option<(Option<i64>, Option<i64>, Option<i64>, f64)> = sqlx::query_as(
+        "SELECT primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM planificacion_dia WHERE fecha = ? AND cerrado = 0"
+    ).bind(&fecha_origen).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+
+    if let Some((p, s, po, precio)) = src {
+        sqlx::query(
+            "INSERT INTO planificacion_dia (fecha, cerrado, primero_id, segundo_id, postre_id, precio_base)
+             VALUES (?, 0, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE primero_id = VALUES(primero_id), segundo_id = VALUES(segundo_id), postre_id = VALUES(postre_id), precio_base = VALUES(precio_base)"
+        )
+        .bind(&fecha_destino).bind(p).bind(s).bind(po).bind(precio)
+        .execute(pool).await.map_err(|e| e.to_string())?;
+    }
+
+    let sueltos: Vec<(i64,)> = sqlx::query_as(
+        "SELECT plato_caja_id FROM planificacion_suelto WHERE fecha = ?"
+    ).bind(&fecha_origen).fetch_all(pool).await.map_err(|e| e.to_string())?;
+    for (plato_id,) in sueltos {
+        sqlx::query("INSERT IGNORE INTO planificacion_suelto (fecha, plato_caja_id) VALUES (?, ?)")
+            .bind(&fecha_destino).bind(plato_id)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+// Expansión recursiva del escandallo: devuelve (ingrediente_id, cantidad en unidad base)
+fn expandir_receta<'a>(
+    pool: &'a sqlx::MySqlPool,
+    receta_id: i64,
+    factor: f64,
+    profundidad: i32,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Vec<(i64, f64)>, String>> + Send + 'a>> {
+    Box::pin(async move {
+        if profundidad > 5 {
+            return Ok(Vec::new());
+        }
+        let filas: Vec<(Option<i64>, Option<i64>, f64, String, f64)> = sqlx::query_as(
+            "SELECT ri.ingrediente_id, ri.sub_receta_id, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad, CAST(ri.merma_porcentaje AS DOUBLE) AS merma
+             FROM receta_ingredientes ri WHERE ri.receta_id = ?"
+        ).bind(receta_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+        let mut salida: Vec<(i64, f64)> = Vec::new();
+        for (ingrediente_id, sub_receta_id, cantidad, unidad, merma) in filas {
+            let cantidad_linea = cantidad * (1.0 + merma / 100.0) * factor;
+            if let Some(sub_id) = sub_receta_id {
+                let porciones_sub: f64 = sqlx::query_scalar::<_, f64>(
+                    "SELECT COALESCE(porciones, 1) FROM recetas WHERE id = ?"
+                ).bind(sub_id).fetch_one(pool).await.unwrap_or(1.0);
+                let sub_factor = cantidad_linea / porciones_sub.max(1.0);
+                let sub_lineas = expandir_receta(pool, sub_id, sub_factor, profundidad + 1).await?;
+                salida.extend(sub_lineas);
+            } else if let Some(iid) = ingrediente_id {
+                let unidad_base: Option<String> = sqlx::query_scalar(
+                    "SELECT unidad_base FROM ingredientes WHERE id = ?"
+                ).bind(iid).fetch_one(pool).await.ok().flatten();
+                let destino = unidad_base.as_deref().unwrap_or(&unidad);
+                let cantidad_base = convertir_unidad(cantidad_linea, &unidad, destino);
+                salida.push((iid, cantidad_base));
+            }
+        }
+        Ok(salida)
+    })
+}
+
+#[tauri::command]
+async fn get_resumen_ingredientes(fecha_desde: String, fecha_hasta: String) -> Result<Vec<ResumenIngrediente>, String> {
+    let pool = &db::get_pool();
+
+    // Días planificados no cerrados
+    let dias: Vec<(Option<i64>, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "SELECT primero_id, segundo_id, postre_id FROM planificacion_dia
+         WHERE fecha BETWEEN ? AND ? AND cerrado = 0"
+    ).bind(&fecha_desde).bind(&fecha_hasta).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let sueltos: Vec<(i64,)> = sqlx::query_as(
+        "SELECT plato_caja_id FROM planificacion_suelto WHERE fecha BETWEEN ? AND ?"
+    ).bind(&fecha_desde).bind(&fecha_hasta).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    // Platos → recetas vinculadas
+    let mut plato_ids: Vec<i64> = Vec::new();
+    for (p, s, po) in &dias {
+        plato_ids.extend([*p, *s, *po].into_iter().flatten());
+    }
+    plato_ids.extend(sueltos.iter().map(|(id,)| *id));
+    plato_ids.sort_unstable();
+    plato_ids.dedup();
+
+    let mut receta_de_plato: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    if !plato_ids.is_empty() {
+        let ids: String = plato_ids.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+        let filas: Vec<(i64, Option<i64>)> = sqlx::query_as(
+            &format!("SELECT id, receta_id FROM caja_platos WHERE id IN ({})", ids)
+        ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+        for (pid, rid) in filas {
+            if let Some(r) = rid {
+                receta_de_plato.insert(pid, r);
+            }
+        }
+    }
+
+    // Veces que se elabora cada receta en el rango (1 por hueco de menú + 1 por suelto)
+    let mut veces: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    for (p, s, po) in &dias {
+        for pid in [*p, *s, *po].into_iter().flatten() {
+            if let Some(rid) = receta_de_plato.get(&pid) {
+                *veces.entry(*rid).or_insert(0) += 1;
+            }
+        }
+    }
+    for (pid,) in &sueltos {
+        if let Some(rid) = receta_de_plato.get(pid) {
+            *veces.entry(*rid).or_insert(0) += 1;
+        }
+    }
+
+    // Sumar ingredientes de todas las elaboraciones
+    let mut requerido: std::collections::HashMap<i64, f64> = std::collections::HashMap::new();
+    for (rid, n) in &veces {
+        let lineas = expandir_receta(pool, *rid, 1.0, 0).await?;
+        for (iid, cantidad) in lineas {
+            *requerido.entry(iid).or_insert(0.0) += cantidad * (*n as f64);
+        }
+    }
+
+    if requerido.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Nombres, unidades y stock actual
+    let ids: String = requerido.keys().map(|i| i.to_string()).collect::<Vec<_>>().join(",");
+    let filas: Vec<(i64, Option<String>, Option<String>, Option<f64>)> = sqlx::query_as(
+        &format!(
+            "SELECT i.id, i.nombre, i.unidad_base,
+                    (SELECT CAST(stock_actual AS DOUBLE) FROM inventario inv WHERE inv.ingrediente_id = i.id) AS stock
+             FROM ingredientes i WHERE i.id IN ({})", ids
+        )
+    ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+
+    let mut resultado: Vec<ResumenIngrediente> = filas.into_iter().map(|(id, nombre, unidad_base, stock)| {
+        let necesaria = requerido.get(&id).copied().unwrap_or(0.0);
+        let stock_val = stock.unwrap_or(0.0);
+        ResumenIngrediente {
+            ingrediente_id: id,
+            nombre,
+            unidad_base,
+            cantidad_necesaria: (necesaria * 1000.0).round() / 1000.0,
+            stock,
+            falta: ((necesaria - stock_val).max(0.0) * 1000.0).round() / 1000.0,
+        }
+    }).collect();
+    resultado.sort_by(|a, b| a.nombre.cmp(&b.nombre));
+    Ok(resultado)
+}
+
+// ========================================
+// MENU DEL DIA (compatibilidad con Caja — lee de planificacion_dia)
 // ========================================
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
@@ -3836,7 +4110,7 @@ async fn get_menu_del_dia(fecha: Option<String>) -> Result<Vec<MenuDelDia>, Stri
         now.format("%Y-%m-%d").to_string()
     });
     let rows: Vec<MenuDelDia> = sqlx::query_as(
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM menu_del_dia WHERE fecha = ?"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM planificacion_dia WHERE fecha = ? AND cerrado = 0"
     ).bind(&f).fetch_all(pool).await.map_err(|e| e.to_string())?;
     Ok(rows)
 }
@@ -3847,7 +4121,7 @@ async fn get_menu_del_dia_hoy() -> Result<Option<MenuDelDia>, String> {
     let now = chrono::Local::now();
     let f = now.format("%Y-%m-%d").to_string();
     let row: Option<MenuDelDia> = sqlx::query_as(
-        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM menu_del_dia WHERE fecha = ?"
+        "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, primero_id, segundo_id, postre_id, CAST(precio_base AS DOUBLE) AS precio_base FROM planificacion_dia WHERE fecha = ? AND cerrado = 0"
     ).bind(&f).fetch_optional(pool).await.map_err(|e| e.to_string())?;
     Ok(row)
 }
@@ -3855,26 +4129,29 @@ async fn get_menu_del_dia_hoy() -> Result<Option<MenuDelDia>, String> {
 #[tauri::command]
 async fn save_menu_del_dia(input: MenuDelDiaInput) -> Result<i64, String> {
     let pool = &db::get_pool();
-    let existing: Option<(i64,)> = sqlx::query_as("SELECT id FROM menu_del_dia WHERE fecha = ?")
-        .bind(&input.fecha).fetch_optional(pool).await.map_err(|e| e.to_string())?;
-    if let Some((id,)) = existing {
-        sqlx::query("UPDATE menu_del_dia SET primero_id = ?, segundo_id = ?, postre_id = ?, precio_base = ? WHERE id = ?")
-            .bind(input.primero_id).bind(input.segundo_id).bind(input.postre_id).bind(input.precio_base).bind(id)
-            .execute(pool).await.map_err(|e| e.to_string())?;
-        Ok(id)
-    } else {
-        let result = sqlx::query("INSERT INTO menu_del_dia (fecha, primero_id, segundo_id, postre_id, precio_base) VALUES (?, ?, ?, ?, ?)")
-            .bind(&input.fecha).bind(input.primero_id).bind(input.segundo_id).bind(input.postre_id).bind(input.precio_base)
-            .execute(pool).await.map_err(|e| e.to_string())?;
-        Ok(result.last_insert_id() as i64)
-    }
+    sqlx::query(
+        "INSERT INTO planificacion_dia (fecha, cerrado, primero_id, segundo_id, postre_id, precio_base)
+         VALUES (?, 0, ?, ?, ?, ?)
+         ON DUPLICATE KEY UPDATE primero_id = VALUES(primero_id), segundo_id = VALUES(segundo_id), postre_id = VALUES(postre_id), precio_base = VALUES(precio_base)"
+    )
+    .bind(&input.fecha).bind(input.primero_id).bind(input.segundo_id).bind(input.postre_id).bind(input.precio_base)
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    let id: i64 = sqlx::query_scalar("SELECT id FROM planificacion_dia WHERE fecha = ?")
+        .bind(&input.fecha).fetch_one(pool).await.map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
 #[tauri::command]
 async fn delete_menu_del_dia(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
-    sqlx::query("DELETE FROM menu_del_dia WHERE id = ?").bind(id)
-        .execute(pool).await.map_err(|e| e.to_string())?;
+    let fecha: Option<String> = sqlx::query_scalar("SELECT DATE_FORMAT(fecha, '%Y-%m-%d') FROM planificacion_dia WHERE id = ?")
+        .bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+    if let Some(f) = fecha {
+        sqlx::query("DELETE FROM planificacion_suelto WHERE fecha = ?").bind(&f)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+        sqlx::query("DELETE FROM planificacion_dia WHERE id = ?").bind(id)
+            .execute(pool).await.map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -4536,6 +4813,12 @@ pub fn run() {
             get_menu_del_dia_hoy,
             save_menu_del_dia,
             delete_menu_del_dia,
+            get_planificacion,
+            save_planificacion_dia,
+            add_planificacion_suelto,
+            delete_planificacion_suelto,
+            copiar_planificacion_dia,
+            get_resumen_ingredientes,
             get_recetas_basic,
             get_despieces,
             get_despiece_salidas,

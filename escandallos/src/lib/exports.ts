@@ -1217,3 +1217,35 @@ export async function exportFichaRecetaPDF(ficha: FichaRecetaData) {
     await writeFile(path, new Uint8Array(buffer));
   }
 }
+
+export async function exportResumenIngredientesExcel(
+  filas: {
+    nombre: string | null;
+    unidad_base: string | null;
+    cantidad_necesaria: number;
+    stock: number | null;
+    falta: number;
+  }[],
+  rango: string
+) {
+  const data = filas.map((f) => ({
+    Ingrediente: f.nombre ?? "",
+    Necesario: f.cantidad_necesaria,
+    Unidad: f.unidad_base ?? "",
+    Stock: f.stock ?? 0,
+    Falta: f.falta,
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Ingredientes");
+
+  const xlsxBytes = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const path = await save({
+    defaultPath: `ingredientes_${rango}.xlsx`,
+    filters: [{ name: "Excel", extensions: ["xlsx"] }],
+  });
+  if (path) {
+    await writeFile(path, new Uint8Array(xlsxBytes));
+  }
+}
