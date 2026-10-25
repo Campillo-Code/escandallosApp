@@ -677,7 +677,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
             if let Some(sub_rid) = sub_receta_id {
                 // Sub-recipe: primero obtener nombre y porciones
                 let sub_info: Option<(String, f64)> = {
-                    let sql = "SELECT nombre, CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?";
+                    let sql = "SELECT nombre, CAST(porciones AS DOUBLE) AS porciones FROM recetas WHERE id = ?";
                     let row = sqlx::query(sql).bind(sub_rid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
                     row.map(|r| {
                         (r.try_get::<String, _>("nombre").unwrap_or_default(),
@@ -4406,7 +4406,7 @@ async fn execute_despiece(despiece_id: i64) -> Result<String, String> {
 
     // Deduct input ingredient from inventory
     let existing_inv: Option<(i64, f64)> = sqlx::query(
-        "SELECT id, CAST(stock_actual AS DOUBLE) FROM inventario WHERE ingrediente_id = ?"
+        "SELECT id, CAST(stock_actual AS DOUBLE) AS stock_actual FROM inventario WHERE ingrediente_id = ?"
     ).bind(ingrediente_entrada_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
         .map(|r| {
             (r.try_get::<i64, _>("id").unwrap_or(0),
@@ -4433,7 +4433,7 @@ async fn execute_despiece(despiece_id: i64) -> Result<String, String> {
     // Add output pieces to inventory
     for (ingrediente_id, cantidad_salida, unidad) in &salidas_calculadas {
         let existing_out: Option<(i64, f64)> = sqlx::query(
-            "SELECT id, CAST(stock_actual AS DOUBLE) FROM inventario WHERE ingrediente_id = ?"
+            "SELECT id, CAST(stock_actual AS DOUBLE) AS stock_actual FROM inventario WHERE ingrediente_id = ?"
         ).bind(ingrediente_id).fetch_optional(pool).await.map_err(|e| e.to_string())?
             .map(|r| {
                 (r.try_get::<i64, _>("id").unwrap_or(0),
