@@ -48,6 +48,8 @@ interface AlbaranDetalle {
   precio_unitario: number;
   subtotal: number | null;
   precio_anterior: number | null;
+  iva_porcentaje: number;
+  precio_con_iva: boolean;
 }
 
 interface Proveedor {
@@ -65,6 +67,8 @@ const detalleSchema = z.object({
   ingrediente_id: z.number({ error: "Selecciona un artículo" }).min(1, "Selecciona un artículo"),
   cantidad: z.string().min(1, "La cantidad es obligatoria"),
   coste_total: z.string().min(1, "El coste total es obligatorio"),
+  iva_porcentaje: z.string(),
+  precio_con_iva: z.boolean(),
 });
 
 type DetalleFormData = z.infer<typeof detalleSchema>;
@@ -85,6 +89,14 @@ interface FilaRevision {
   precio_con_iva: boolean;
 }
 
+// Lo que se PAGA al proveedor (con IVA) y el coste que se graba (siempre
+// con IVA incluido: es lo que de verdad cuesta el producto).
+// Sin marcar: el importe introducido es la base; marcado: ya es el pago.
+const pagoLinea = (subtotal: number, iva: number, con: boolean) =>
+  iva > 0 ? (con ? subtotal : subtotal * (1 + iva / 100)) : subtotal;
+const costeLinea = (subtotal: number, iva: number, con: boolean) =>
+  iva > 0 && con ? subtotal / (1 + iva / 100) : subtotal;
+
 export default function Albaranes() {
   const [albaranes, setAlbaranes] = useState<Albaran[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
@@ -100,9 +112,9 @@ export default function Albaranes() {
   const [searchTerm, setSearchTerm] = useState("");
   const [filtroEstado, setFiltroEstado] = useState<"todos" | "pendiente" | "procesado">("todos");
   const [tipoDetalle, setTipoDetalle] = useState<"ingrediente" | "envase" | "bebida">("ingrediente");
-  const [lineasTemp, setLineasTemp] = useState<{ ingrediente_id: number; nombre: string; unidad: string; cantidad: number; coste_total: number }[]>([]);
+  const [lineasTemp, setLineasTemp] = useState<{ ingrediente_id: number; nombre: string; unidad: string; cantidad: number; coste_total: number; iva_porcentaje: number; precio_con_iva: boolean }[]>([]);
   const [showAddLinea, setShowAddLinea] = useState(false);
-  const [lineaForm, setLineaForm] = useState({ ingrediente_id: 0, cantidad: "", coste_total: "" });
+  const [lineaForm, setLineaForm] = useState({ ingrediente_id: 0, cantidad: "", coste_total: "", iva_porcentaje: "10", precio_con_iva: false });
   const [revision, setRevision] = useState<FilaRevision[] | null>(null);
   const [cabeceraDoc, setCabeceraDoc] = useState<CabeceraDocumento | null>(null);
   const [cargandoDoc, setCargandoDoc] = useState(false);
@@ -130,6 +142,7 @@ export default function Albaranes() {
     formState: { errors: errorsDetalle, isSubmitting: isSubmittingDetalle },
   } = useForm<DetalleFormData>({
     resolver: zodResolver(detalleSchema),
+    defaultValues: { iva_porcentaje: "10", precio_con_iva: false },
   });
 
   const loadAlbaranes = async () => {
@@ -216,6 +229,8 @@ export default function Albaranes() {
             unidad: linea.unidad,
             precio_unitario: precioUnitario,
             subtotal: linea.coste_total,
+            iva_porcentaje: linea.iva_porcentaje,
+            precio_con_iva: linea.precio_con_iva,
           },
         });
       }
@@ -240,8 +255,10 @@ export default function Albaranes() {
       unidad: ing.unidad_base,
       cantidad: parseFloat(lineaForm.cantidad),
       coste_total: parseFloat(lineaForm.coste_total),
+      iva_porcentaje: parseFloat(lineaForm.iva_porcentaje) || 0,
+      precio_con_iva: lineaForm.precio_con_iva,
     }]);
-    setLineaForm({ ingrediente_id: 0, cantidad: "", coste_total: "" });
+    setLineaForm({ ingrediente_id: 0, cantidad: "", coste_total: "", iva_porcentaje: "10", precio_con_iva: false });
     setShowAddLinea(false);
   };
 
@@ -381,13 +398,9 @@ export default function Albaranes() {
       const precio = parseFloat(f.precio) || 0;
       // Cantidad real en la unidad del artículo (uds × presentación)
       const cantBase = parseFloat(f.cantidad_real) || uds;
-      // Coste sin IVA: si los precios unitarios del documento ya lo incluían,
-      // se divide por el tipo detectado (reconciliado con Base/TOTAL del pie)
-      let total = uds * precio;
-      if (f.precio_con_iva && f.iva_pct != null && f.iva_pct > 0) {
-        total = total / (1 + f.iva_pct / 100);
-      }
-      total = Math.round(total * 10000) / 10000;
+      // Se guarda el precio tal cual viene del documento + los flags de IVA;
+      // al procesar se graba el coste con IVA incluido segun esos flags
+      const total = Math.round(uds * precio * 10000) / 10000;
       return { item, uds, cantBase, total };
     };
 
@@ -418,6 +431,8 @@ export default function Albaranes() {
             unidad: p.item.unidad_base,
             cantidad: p.cantBase,
             coste_total: p.total,
+            iva_porcentaje: f.iva_pct ?? 10,
+            precio_con_iva: f.precio_con_iva,
           };
         }),
       ]);
@@ -437,6 +452,8 @@ export default function Albaranes() {
             unidad: p.item.unidad_base,
             precio_unitario: p.cantBase > 0 ? p.total / p.cantBase : 0,
             subtotal: p.total,
+            iva_porcentaje: f.iva_pct ?? 10,
+            precio_con_iva: f.precio_con_iva,
           },
         });
       }
@@ -464,6 +481,8 @@ export default function Albaranes() {
           unidad: ingrediente?.unidad_base ?? "ud",
           precio_unitario: precioUnitario,
           subtotal: costeTotal,
+          iva_porcentaje: parseFloat(data.iva_porcentaje) || 0,
+          precio_con_iva: data.precio_con_iva,
         },
       });
       setShowDetalleForm(false);
@@ -530,7 +549,26 @@ export default function Albaranes() {
   };
 
   if (selectedAlbaran) {
-    const totalDetalle = detalles.reduce((sum, d) => sum + (d.subtotal ?? 0), 0);
+    // totalPago = lo que se paga al proveedor y se graba como coste (con IVA);
+    // totalDetalleSinIva = la base deducible (sin IVA)
+    const totalPago = detalles.reduce(
+      (sum, d) =>
+        sum +
+        (d.iva_porcentaje > 0
+          ? d.precio_con_iva
+            ? d.subtotal ?? 0
+            : (d.subtotal ?? 0) * (1 + d.iva_porcentaje / 100)
+          : d.subtotal ?? 0),
+      0
+    );
+    const totalDetalleSinIva = detalles.reduce(
+      (sum, d) =>
+        sum +
+        (d.precio_con_iva && d.iva_porcentaje > 0
+          ? (d.subtotal ?? 0) / (1 + d.iva_porcentaje / 100)
+          : (d.subtotal ?? 0)),
+      0
+    );
 
     return (
       <div className="p-6">
@@ -673,9 +711,29 @@ export default function Albaranes() {
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Lo que pagaste por la cantidad indicada
+                  Base sin IVA. Marca «Precio con IVA» si el importe ya lo incluye
                 </p>
                 {errorsDetalle.coste_total && <p className="text-red-500 text-sm mt-1">{errorsDetalle.coste_total.message}</p>}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">IVA</label>
+                <div className="flex items-center gap-3">
+                  <select
+                    {...registerDetalle("iva_porcentaje")}
+                    className="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="4">4%</option>
+                    <option value="10">10%</option>
+                    <option value="21">21%</option>
+                  </select>
+                  <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer whitespace-nowrap">
+                    <input type="checkbox" {...registerDetalle("precio_con_iva")} />
+                    Precio con IVA
+                  </label>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Marca si el importe ya lleva IVA — el coste grabado siempre incluye el IVA
+                </p>
               </div>
               <div className="md:col-span-4 flex gap-3 justify-end">
                 <button
@@ -722,12 +780,36 @@ export default function Albaranes() {
                     precioBase = d.precio_unitario * 1000;
                     unidadBase = "l";
                   }
+                  const r = d.iva_porcentaje;
+                  const sub = d.subtotal ?? 0;
+                  const pago = pagoLinea(sub, r, d.precio_con_iva);
+                  const coste = costeLinea(sub, r, d.precio_con_iva);
+                  const precioPago = d.precio_con_iva ? precioBase : precioBase * (1 + (r > 0 ? r : 0) / 100);
+                  const precioCoste = costeLinea(precioBase, r, d.precio_con_iva);
                   return (
                     <tr key={d.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-800">{d.ingrediente_nombre}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 text-right">{d.cantidad} {d.unidad}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 text-right">{precioBase.toFixed(2)} €/{unidadBase}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">{(d.subtotal ?? 0).toFixed(2)} €</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 text-right">
+                        {r > 0 ? (
+                          <>
+                            {precioPago.toFixed(2)} €/{unidadBase}
+                            <span className={`block text-[11px] ${d.precio_con_iva ? "text-amber-700" : "text-gray-400"}`}>
+                              sin IVA: {precioCoste.toFixed(2)} €/{unidadBase}
+                            </span>
+                          </>
+                        ) : (
+                          <>{precioBase.toFixed(2)} €/{unidadBase}</>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800 text-right">
+                        {pago.toFixed(2)} €
+                        {r > 0 && (
+                          <span className={`block text-[11px] font-normal ${d.precio_con_iva ? "text-amber-700" : "text-gray-400"}`}>
+                            sin IVA: {coste.toFixed(2)} €
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-sm text-right" onClick={(e) => e.stopPropagation()}>
                         {!selectedAlbaran.procesado && (
                           <button
@@ -744,8 +826,15 @@ export default function Albaranes() {
               </tbody>
               <tfoot className="bg-gray-50 border-t border-gray-200">
                 <tr>
-                  <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-800">Total</td>
-                  <td className="px-4 py-3 text-sm font-bold text-gray-800 text-right">{totalDetalle.toFixed(2)} €</td>
+                  <td colSpan={3} className="px-4 py-3 text-sm font-semibold text-gray-800">
+                    Total a pagar
+                    {detalles.some((d) => d.iva_porcentaje > 0) && (
+                      <span className="ml-2 text-xs font-normal text-amber-700">
+                        IVA incluido: {(totalPago - totalDetalleSinIva).toFixed(2)} €
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-bold text-gray-800 text-right">{totalPago.toFixed(2)} €</td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -868,7 +957,7 @@ export default function Albaranes() {
                 <div className="bg-gray-50 rounded-lg p-3 mb-3">
                   <div className="flex gap-2 mb-2">
                     {[{ k: "ingrediente", l: "🥕 Ingrediente" }, { k: "envase", l: "📦 Envase" }, { k: "bebida", l: "🥤 Bebida" }].map(t => (
-                      <button key={t.k} type="button" onClick={() => { setTipoDetalle(t.k as any); setLineaForm({ ingrediente_id: 0, cantidad: "", coste_total: "" }); }}
+                      <button key={t.k} type="button" onClick={() => { setTipoDetalle(t.k as any); setLineaForm({ ingrediente_id: 0, cantidad: "", coste_total: "", iva_porcentaje: "10", precio_con_iva: false }); }}
                         className={`px-3 py-1 rounded text-xs font-medium ${tipoDetalle === t.k ? "bg-blue-600 text-white" : "bg-white text-gray-600 border"}`}>
                         {t.l}
                       </button>
@@ -889,6 +978,23 @@ export default function Albaranes() {
                       onChange={(e) => setLineaForm({ ...lineaForm, coste_total: e.target.value })}
                       className="border rounded px-2 py-1.5 text-sm" />
                   </div>
+                  <div className="flex items-center gap-3 mt-2">
+                    <label className="flex items-center gap-1 text-xs text-gray-600">
+                      IVA
+                      <select value={lineaForm.iva_porcentaje} disabled={!lineaForm.precio_con_iva}
+                        onChange={(e) => setLineaForm({ ...lineaForm, iva_porcentaje: e.target.value })}
+                        className="border rounded px-1.5 py-1 text-xs disabled:bg-gray-100 disabled:text-gray-400">
+                        <option value="4">4%</option>
+                        <option value="10">10%</option>
+                        <option value="21">21%</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1 text-xs text-gray-600 cursor-pointer">
+                      <input type="checkbox" checked={lineaForm.precio_con_iva}
+                        onChange={(e) => setLineaForm({ ...lineaForm, precio_con_iva: e.target.checked })} />
+                      Precio con IVA incluido
+                    </label>
+                  </div>
                   <div className="flex gap-2 mt-2 justify-end">
                     <button type="button" onClick={() => setShowAddLinea(false)} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
                     <button type="button" onClick={addLineaTemporal} className="text-xs text-blue-600 font-medium hover:text-blue-800">Añadir</button>
@@ -904,13 +1010,21 @@ export default function Albaranes() {
                     <div key={i} className="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-1.5">
                       <span>{l.nombre} × {l.cantidad} {l.unidad}</span>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono">{l.coste_total.toFixed(2)} €</span>
+                        {l.iva_porcentaje > 0 && (
+                          <span
+                            className={`text-[10px] rounded px-1 ${l.precio_con_iva ? "text-amber-700 bg-amber-50" : "text-gray-400"}`}
+                            title={l.precio_con_iva ? "El importe ya incluye IVA: es el coste que se graba" : "Base sin IVA: al procesar se suma el IVA de su tasa"}
+                          >
+                            sin IVA {costeLinea(l.coste_total, l.iva_porcentaje, l.precio_con_iva).toFixed(2)} €
+                          </span>
+                        )}
+                        <span className="font-mono">{pagoLinea(l.coste_total, l.iva_porcentaje, l.precio_con_iva).toFixed(2)} €</span>
                         <button type="button" onClick={() => removeLineaTemporal(i)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
                       </div>
                     </div>
                   ))}
                   <div className="flex justify-end text-sm font-semibold pt-1 border-t">
-                    <span>Total: {lineasTemp.reduce((s, l) => s + l.coste_total, 0).toFixed(2)} €</span>
+                    <span>Total: {lineasTemp.reduce((s, l) => s + pagoLinea(l.coste_total, l.iva_porcentaje, l.precio_con_iva), 0).toFixed(2)} €</span>
                   </div>
                 </div>
               )}
@@ -1085,7 +1199,7 @@ function ModalRevision({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-5xl max-h-[85vh] flex flex-col shadow-xl">
+      <div className="bg-white rounded-lg w-full max-w-6xl max-h-[85vh] flex flex-col shadow-xl">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
           <div>
             <h3 className="text-lg font-semibold text-gray-800">Revisión del documento</h3>
@@ -1113,6 +1227,7 @@ function ModalRevision({
                   Real
                 </th>
                 <th className="pb-2 w-24 text-right">Precio €</th>
+                <th className="pb-2 w-24 text-center">IVA</th>
                 <th className="pb-2 w-28 text-right">Subtotal</th>
                 <th className="w-8 pb-2"></th>
               </tr>
@@ -1188,17 +1303,44 @@ function ModalRevision({
                         className="w-full border border-gray-200 rounded px-2 py-1 text-sm text-right"
                       />
                     </td>
+                    <td className="py-1.5 pr-1 align-top">
+                      <select
+                        value={String(f.iva_pct ?? 10)}
+                        onChange={(e) => updateFila(f.uid, { iva_pct: parseFloat(e.target.value) })}
+                        className="w-16 border border-gray-200 rounded px-1 py-1 text-xs text-center"
+                        title="Tipo de IVA aplicable"
+                      >
+                        <option value="4">4%</option>
+                        <option value="10">10%</option>
+                        <option value="21">21%</option>
+                      </select>
+                      <label className="flex items-center gap-1 text-[11px] text-gray-500 mt-0.5 cursor-pointer justify-center" title="El precio unitario del documento ya lleva IVA incluido">
+                        <input
+                          type="checkbox"
+                          checked={f.precio_con_iva}
+                          onChange={(e) =>
+                            updateFila(f.uid, {
+                              precio_con_iva: e.target.checked,
+                              iva_pct: f.iva_pct ?? 10,
+                            })
+                          }
+                        />
+                        con IVA
+                      </label>
+                    </td>
                     <td className="py-1.5 pr-2 text-sm text-gray-700 text-right font-mono">
                       {subtotal.toFixed(2)} €
+                      {f.precio_con_iva && f.iva_pct != null && f.iva_pct > 0 ? (
+                        <span className="block text-[10px] text-amber-700 font-sans">
+                          IVA {f.iva_pct}% incluido — es el coste que se graba
+                        </span>
+                      ) : !f.precio_con_iva && f.iva_pct != null && f.iva_pct > 0 ? (
+                        <span className="block text-[10px] text-gray-400 font-sans">
+                          al grabar se suma IVA {f.iva_pct}%: {(subtotal * (1 + f.iva_pct / 100)).toFixed(2)} €
+                        </span>
+                      ) : null}
                       {(f.importe_con_iva || f.precio_con_iva) && f.iva_pct != null && (
-                        <span
-                          className="block text-[10px] text-amber-700 font-sans"
-                          title={
-                            f.precio_con_iva
-                              ? `Los precios unitarios llevan IVA (${f.iva_pct}%) incluido: el coste grabado se normaliza a sin IVA`
-                              : `El importe impreso lleva IVA (${f.iva_pct}%) incluido; el precio unitario no`
-                          }
-                        >
+                        <span className="block text-[10px] text-amber-700 font-sans" title={f.precio_con_iva ? "Los precios unitarios llevan IVA incluido" : "El importe impreso lleva IVA incluido; el precio unitario no"}>
                           {f.precio_con_iva ? `precios c/IVA ${f.iva_pct}%` : `importe c/IVA ${f.iva_pct}%`}
                         </span>
                       )}

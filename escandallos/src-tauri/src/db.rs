@@ -356,6 +356,15 @@ async fn run_migrations(pool: &MySqlPool) {
          SELECT fecha, 0, primero_id, segundo_id, postre_id, precio_base FROM menu_del_dia"
     ).execute(pool).await;
 
+    // ALBARANES_DETALLE: IVA por línea (0/4/10/21) y si el precio introductorio lo incluye
+    let check_iva_detalle: Option<(String,)> = sqlx::query_as(
+        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'albaranes_detalle' AND COLUMN_NAME = 'iva_porcentaje'"
+    ).fetch_optional(pool).await.unwrap_or(None);
+    if check_iva_detalle.is_none() {
+        let _ = sqlx::query("ALTER TABLE albaranes_detalle ADD COLUMN iva_porcentaje DECIMAL(5,2) NOT NULL DEFAULT 0, ADD COLUMN precio_con_iva TINYINT(1) NOT NULL DEFAULT 0").execute(pool).await;
+        println!("ALTER TABLE albaranes_detalle ADD iva_porcentaje/precio_con_iva completed");
+    }
+
     // WHATSAPP PEDIDOS: Add columns if not exists
     let check_tipo: Option<(String,)> = sqlx::query_as(
         "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'whatsapp_pedidos' AND COLUMN_NAME = 'tipo'"

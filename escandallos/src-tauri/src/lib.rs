@@ -1014,6 +1014,8 @@ pub struct AlbaranDetalle {
     pub precio_unitario: f64,
     pub subtotal: Option<f64>,
     pub precio_anterior: Option<f64>,
+    pub iva_porcentaje: f64,
+    pub precio_con_iva: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1024,6 +1026,10 @@ pub struct AlbaranDetalleInput {
     pub unidad: String,
     pub precio_unitario: f64,
     pub subtotal: Option<f64>,
+    #[serde(default)]
+    pub iva_porcentaje: f64,
+    #[serde(default)]
+    pub precio_con_iva: bool,
 }
 
 #[tauri::command]
@@ -1121,7 +1127,7 @@ async fn delete_albaran(id: i64) -> Result<(), String> {
 #[tauri::command]
 async fn get_albaran_detalles(albaran_id: i64) -> Result<Vec<AlbaranDetalle>, String> {
     let pool = &db::get_pool();
-    let sql = "SELECT ad.id, ad.albaran_id, ad.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(ad.cantidad AS DOUBLE) AS cantidad, ad.unidad, CAST(ad.precio_unitario AS DOUBLE) AS precio_unitario, CAST(ad.subtotal AS DOUBLE) AS subtotal, CAST(ad.precio_anterior AS DOUBLE) AS precio_anterior FROM albaranes_detalle ad INNER JOIN ingredientes i ON ad.ingrediente_id = i.id WHERE ad.albaran_id = ? ORDER BY ad.id";
+    let sql = "SELECT ad.id, ad.albaran_id, ad.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(ad.cantidad AS DOUBLE) AS cantidad, ad.unidad, CAST(ad.precio_unitario AS DOUBLE) AS precio_unitario, CAST(ad.subtotal AS DOUBLE) AS subtotal, CAST(ad.precio_anterior AS DOUBLE) AS precio_anterior, CAST(ad.iva_porcentaje AS DOUBLE) AS iva_porcentaje, ad.precio_con_iva FROM albaranes_detalle ad INNER JOIN ingredientes i ON ad.ingrediente_id = i.id WHERE ad.albaran_id = ? ORDER BY ad.id";
     let rows = sqlx::query(sql).bind(albaran_id).fetch_all(pool).await.map_err(|e| e.to_string())?;
     let result: Vec<AlbaranDetalle> = rows.iter().map(|r| {
         AlbaranDetalle {
@@ -1134,6 +1140,8 @@ async fn get_albaran_detalles(albaran_id: i64) -> Result<Vec<AlbaranDetalle>, St
             precio_unitario: r.try_get::<f64, _>("precio_unitario").unwrap_or(0.0),
             subtotal: r.try_get::<Option<f64>, _>("subtotal").ok().flatten(),
             precio_anterior: r.try_get::<Option<f64>, _>("precio_anterior").ok().flatten(),
+            iva_porcentaje: r.try_get::<f64, _>("iva_porcentaje").unwrap_or(0.0),
+            precio_con_iva: r.try_get("precio_con_iva").unwrap_or(false),
         }
     }).collect();
     Ok(result)
@@ -1143,7 +1151,7 @@ async fn get_albaran_detalles(albaran_id: i64) -> Result<Vec<AlbaranDetalle>, St
 async fn add_albaran_detalle(input: AlbaranDetalleInput) -> Result<i64, String> {
     let pool = &db::get_pool();
     let result = sqlx::query(
-        "INSERT INTO albaranes_detalle (albaran_id, ingrediente_id, cantidad, unidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO albaranes_detalle (albaran_id, ingrediente_id, cantidad, unidad, precio_unitario, subtotal, iva_porcentaje, precio_con_iva) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     )
     .bind(input.albaran_id)
     .bind(input.ingrediente_id)
@@ -1151,6 +1159,8 @@ async fn add_albaran_detalle(input: AlbaranDetalleInput) -> Result<i64, String> 
     .bind(&input.unidad)
     .bind(input.precio_unitario)
     .bind(input.subtotal)
+    .bind(input.iva_porcentaje)
+    .bind(input.precio_con_iva)
     .execute(pool)
     .await
     .map_err(|e| e.to_string())?;
@@ -1255,7 +1265,7 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
     }
 
     let detalles_rows = sqlx::query(
-        "SELECT ad.id, ad.albaran_id, ad.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(ad.cantidad AS DOUBLE) AS cantidad, ad.unidad, CAST(ad.precio_unitario AS DOUBLE) AS precio_unitario, CAST(ad.subtotal AS DOUBLE) AS subtotal, CAST(ad.precio_anterior AS DOUBLE) AS precio_anterior FROM albaranes_detalle ad INNER JOIN ingredientes i ON ad.ingrediente_id = i.id WHERE ad.albaran_id = ?"
+        "SELECT ad.id, ad.albaran_id, ad.ingrediente_id, i.nombre AS ingrediente_nombre, CAST(ad.cantidad AS DOUBLE) AS cantidad, ad.unidad, CAST(ad.precio_unitario AS DOUBLE) AS precio_unitario, CAST(ad.subtotal AS DOUBLE) AS subtotal, CAST(ad.precio_anterior AS DOUBLE) AS precio_anterior, CAST(ad.iva_porcentaje AS DOUBLE) AS iva_porcentaje, ad.precio_con_iva FROM albaranes_detalle ad INNER JOIN ingredientes i ON ad.ingrediente_id = i.id WHERE ad.albaran_id = ?"
     )
     .bind(albaran_id)
     .fetch_all(pool)
@@ -1273,6 +1283,8 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
             precio_unitario: r.try_get::<f64, _>("precio_unitario").unwrap_or(0.0),
             subtotal: r.try_get::<Option<f64>, _>("subtotal").ok().flatten(),
             precio_anterior: r.try_get::<Option<f64>, _>("precio_anterior").ok().flatten(),
+            iva_porcentaje: r.try_get::<f64, _>("iva_porcentaje").unwrap_or(0.0),
+            precio_con_iva: r.try_get("precio_con_iva").unwrap_or(false),
         }
     }).collect();
 
@@ -1287,11 +1299,20 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .and_then(|r| r.try_get::<f64, _>(0).ok());
 
+        // El coste grabado es lo que se paga de verdad: INCLUYE el IVA.
+        // Sin marcar → el importe es la base y se le suma el IVA de su tasa;
+        // marcado "con IVA" → el importe introducido ya es el pago completo.
+        let precio_coste = if detalle.iva_porcentaje > 0.0 && !detalle.precio_con_iva {
+            detalle.precio_unitario * (1.0 + detalle.iva_porcentaje / 100.0)
+        } else {
+            detalle.precio_unitario
+        };
+
         if let Some(_prev_price) = current_price {
             sqlx::query(
                 "UPDATE ingrediente_precios SET precio_por_unidad_base = ?, unidad = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE ingrediente_id = ? AND es_predeterminado = 1"
             )
-            .bind(detalle.precio_unitario)
+            .bind(precio_coste)
             .bind(&detalle.unidad)
             .bind(detalle.ingrediente_id)
             .execute(pool)
@@ -1303,9 +1324,9 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
             )
             .bind(detalle.ingrediente_id)
             .bind(proveedor_id)
-            .bind(detalle.precio_unitario)
+            .bind(precio_coste)
             .bind(&detalle.unidad)
-            .bind(detalle.precio_unitario)
+            .bind(precio_coste)
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
