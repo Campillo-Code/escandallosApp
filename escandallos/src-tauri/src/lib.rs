@@ -674,43 +674,51 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
         let merma = ri.5;
         let tipo_envase = ri.6;
 
-        if let Some(sub_rid) = sub_receta_id {
-            // Sub-recipe: first get name and porciones
-            let sub_info: Option<(String, f64)> = {
-                let sql = "SELECT nombre, CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?";
-                let row = sqlx::query(sql).bind(sub_rid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
-                row.map(|r| {
-                    (r.try_get::<String, _>("nombre").unwrap_or_default(),
-                     r.try_get::<f64, _>("porciones").unwrap_or(0.0))
-                })
-            };
-
-            if let Some((sub_nombre, sub_porciones)) = sub_info {
-                // Get cost of all ingredients in the sub-recipe
-                let sub_coste_opt: Option<f64> = sqlx::query(
-                    "SELECT CAST(SUM(ri2.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri2.merma_porcentaje / 100)) AS DOUBLE) FROM receta_ingredientes ri2 LEFT JOIN ingrediente_precios ip ON ri2.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 WHERE ri2.receta_id = ?"
-                )
-                .bind(sub_rid).fetch_optional(pool).await.map_err(|e| e.to_string())?
-                .and_then(|r| r.try_get::<f64, _>(0).ok());
-
-                let sub_coste_total = sub_coste_opt.unwrap_or(0.0);
-                let prop_coste = if sub_porciones > 0.0 {
-                    (cantidad / sub_porciones) * sub_coste_total * (1.0 + merma / 100.0)
-                } else {
-                    0.0
+            if let Some(sub_rid) = sub_receta_id {
+                // Sub-recipe: primero obtener nombre y porciones
+                let sub_info: Option<(String, f64)> = {
+                    let sql = "SELECT nombre, CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?";
+                    let row = sqlx::query(sql).bind(sub_rid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
+                    row.map(|r| {
+                        (r.try_get::<String, _>("nombre").unwrap_or_default(),
+                         r.try_get::<f64, _>("porciones").unwrap_or(0.0))
+                    })
                 };
-                coste_total += prop_coste;
-                ingredientes.push(CosteIngrediente {
-                    ingrediente_nombre: sub_nombre,
-                    cantidad,
-                    unidad,
-                    merma_porcentaje: merma,
-                    precio_unitario: None,
-                    precio_por_unidad_receta: None,
-                    coste: prop_coste,
-                });
-            }
-        } else if let Some(iid) = ingrediente_id {
+
+                if let Some((sub_nombre, sub_porciones)) = sub_info {
+                    // Coste completo de la sub-receta: recursivo (sub-recetas
+                    // anidadas) y con conversión a la unidad base de cada
+                    // ingrediente (mismo cálculo que el resto de la app)
+                    let (sub_total, _, _) = calcular_coste_receta(pool, sub_rid)
+                        .await
+                        .unwrap_or((0.0, 0.0, 0.0));
+
+                    let prop_coste = if sub_porciones > 0.0 {
+                        (cantidad / sub_porciones) * sub_total * (1.0 + merma / 100.0)
+                    } else {
+                        0.0
+                    };
+                    // Coste por unidad elegida (ej. €/ud de albóndigas usadas)
+                    let precio_por_ud = if cantidad > 0.0 {
+                        prop_coste / cantidad
+                    } else if sub_porciones > 0.0 {
+                        (sub_total / sub_porciones) * (1.0 + merma / 100.0)
+                    } else {
+                        0.0
+                    };
+
+                    coste_total += prop_coste;
+                    ingredientes.push(CosteIngrediente {
+                        ingrediente_nombre: sub_nombre,
+                        cantidad,
+                        unidad,
+                        merma_porcentaje: merma,
+                        precio_unitario: None,
+                        precio_por_unidad_receta: Some(precio_por_ud),
+                        coste: prop_coste,
+                    });
+                }
+            } else if let Some(iid) = ingrediente_id {
             // Regular ingredient
             let ing_row: Option<(String, String)> = sqlx::query_as("SELECT nombre, unidad_base FROM ingredientes WHERE id = ?")
                 .bind(iid).fetch_optional(pool).await.map_err(|e| e.to_string())?;
