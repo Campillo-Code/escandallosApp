@@ -473,7 +473,7 @@ export default function Recetas() {
       ingrediente_id: ingredienteId,
       sub_receta_id: subRecetaId,
       cantidad,
-      unidad: data.unidad,
+      unidad: tipoIngrediente === "receta" ? "ud" : data.unidad,
       merma_porcentaje: Number(data.merma_porcentaje) || 0,
       notas: data.notas || null,
       orden: recetaIngredientes.length,
@@ -865,7 +865,6 @@ export default function Recetas() {
                     <select
                       {...registerIng("unidad")}
                       className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={tipoIngrediente === "receta"}
                     >
                       {tipoIngrediente === "receta" ? (
                         <option value="ud">ud</option>
@@ -879,6 +878,7 @@ export default function Recetas() {
                         </>
                       )}
                     </select>
+                    {errorsIng.unidad && <p className="text-red-500 text-sm mt-1">{String(errorsIng.unidad.message)}</p>}
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Merma %</label>
