@@ -126,11 +126,13 @@ interface RecetaGuarnicion {
 }
 
 const ingredienteRecetaSchema = z.object({
-  ingrediente_id: z.any(),
+  // .optional() es imprescindible: zod v4 rechaza z.any() si la CLAVE NO EXISTE
+  // (pasa en la pestaña "Receta base", donde ingrediente_id no se renderiza)
+  ingrediente_id: z.any().optional(),
   sub_receta_id: z.any().optional(),
-  cantidad: z.any(),
+  cantidad: z.any().optional(),
   unidad: z.string().min(1, "Unidad obligatoria"),
-  merma_porcentaje: z.any(),
+  merma_porcentaje: z.any().optional(),
   notas: z.string().optional(),
 });
 
@@ -827,7 +829,7 @@ export default function Recetas() {
                         )}
                       />
                     )}
-                    {errorsIng.ingrediente_id && tipoIngrediente !== "receta" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.ingrediente_id.message)}</p>}
+                    {errorsIng.ingrediente_id && <p className="text-red-500 text-sm mt-1">{String(errorsIng.ingrediente_id.message)}</p>}
                     {errorsIng.sub_receta_id && tipoIngrediente === "receta" && <p className="text-red-500 text-sm mt-1">{String(errorsIng.sub_receta_id.message)}</p>}
                     {recetasBase.length === 0 && tipoIngrediente === "receta" && <p className="text-xs text-gray-400 mt-1">No hay recetas marcadas como base</p>}
                     {envases.length === 0 && tipoIngrediente === "envase" && <p className="text-xs text-gray-400 mt-1">No hay envases creados. Ve a Suministros → Envases</p>}
