@@ -73,6 +73,12 @@ export default function Pedidos() {
   const [formFechaEntrega, setFormFechaEntrega] = useState("");
   const [categorias, setCategorias] = useState<CajaCategoria[]>([]);
   const [platos, setPlatos] = useState<PlatoCaja[]>([]);
+  const [menuFecha, setMenuFecha] = useState<{ primero_id: number | null; segundo_id: number | null; postre_id: number | null; precio_base: number } | null>(null);
+
+  const hoyISO = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
 
   const loadPedidos = async () => {
     try {
@@ -113,6 +119,18 @@ export default function Pedidos() {
     const interval = setInterval(loadPedidos, 10000);
     return () => clearInterval(interval);
   }, [filtroEstado, filtroTipo, fechaDesde, fechaHasta]);
+
+  useEffect(() => {
+    let cancelado = false;
+    if (!formFechaEntrega) {
+      setMenuFecha(null);
+      return;
+    }
+    invoke<any[]>("get_menu_del_dia", { fecha: formFechaEntrega })
+      .then(data => { if (!cancelado) setMenuFecha(data && data.length > 0 ? data[0] : null); })
+      .catch(() => { if (!cancelado) setMenuFecha(null); });
+    return () => { cancelado = true; };
+  }, [formFechaEntrega]);
 
   useEffect(() => {
     audioRef.current = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbsGczIj2NysaRXS4cXJ3P2rBnMyI9jcrGkV0uHFydz9qwZzMiPY3KxpFdLhxcnc/asGczIj2NysaRXS4cXJ3P2rBnMyI9jcrGkV0uHFydz9qwZzMiPY3KxpFdLhxcnc/asGczIj0=");
@@ -229,6 +247,24 @@ export default function Pedidos() {
 
   const formTotal = formItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
 
+  const nombrePlato = (id: number | null) => (id ? platos.find(p => p.id === id)?.nombre ?? null : null);
+
+  const addItemMenu = () => {
+    if (!menuFecha) return;
+    const partes = [nombrePlato(menuFecha.primero_id), nombrePlato(menuFecha.segundo_id), nombrePlato(menuFecha.postre_id)].filter(Boolean);
+    if (partes.length === 0) { alert("El menú de ese día no tiene platos asignados"); return; }
+    const precio = menuFecha.precio_base || 0;
+    setFormItems(prev => [...prev, {
+      categoria: "Menú del día",
+      descripcion: `Menú: ${partes.join(" + ")}`,
+      cantidad: 1,
+      precio_unitario: precio,
+      subtotal: precio,
+      modificacion: "",
+      precio_modificacion: 0,
+    }]);
+  };
+
   const handleCrearPedido = async () => {
     if (formItems.length === 0) { alert("Añade al menos un plato"); return; }
     try {
@@ -252,7 +288,7 @@ export default function Pedidos() {
             <span className="ml-2 bg-red-500 text-white text-sm font-bold px-2 py-0.5 rounded-full animate-pulse">{pedidoCount} nuevos</span>
           )}
         </h2>
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+        <button onClick={() => { setShowForm(true); setFormFechaEntrega(hoyISO()); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
           <Plus size={18} /> Nuevo Pedido
         </button>
       </div>
@@ -450,10 +486,42 @@ export default function Pedidos() {
                   <input value={formTelefono} onChange={(e) => setFormTelefono(e.target.value)} placeholder="600 123 456" className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
                 </div>
               </div>
-              {formTipo === "encargo" && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de entrega</label>
-                  <DateInput value={formFechaEntrega} onChange={setFormFechaEntrega} />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {formTipo === "encargo" ? "Fecha de entrega" : "Fecha del pedido"}
+                </label>
+                <DateInput value={formFechaEntrega} onChange={setFormFechaEntrega} />
+              </div>
+              {formFechaEntrega && formTipo === "pedido" && (
+                <div className={`rounded-lg border p-3 ${menuFecha ? "bg-green-50 border-green-200" : "bg-gray-50 border-gray-200"}`}>
+                  {menuFecha ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm">
+                          <span className="font-semibold text-green-800">Menú del día</span>
+                          <span className="text-gray-500 ml-2">
+                            {formFechaEntrega.split("-").reverse().join("/")}
+                          </span>
+                          <div className="text-gray-700 mt-1">
+                            {[nombrePlato(menuFecha.primero_id), nombrePlato(menuFecha.segundo_id), nombrePlato(menuFecha.postre_id)]
+                              .filter(Boolean)
+                              .join(" + ") || "Sin platos asignados"}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-bold text-gray-800 mb-1">{(menuFecha.precio_base || 0).toFixed(2)} €</div>
+                          <button
+                            onClick={addItemMenu}
+                            className="px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+                          >
+                            Añadir menú
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-gray-400">No hay menú del día configurado para esta fecha (o está marcado como cerrado)</p>
+                  )}
                 </div>
               )}
               <div>

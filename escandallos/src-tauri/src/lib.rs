@@ -726,7 +726,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
                         .unwrap_or((0.0, 0.0, 0.0));
 
                     let prop_coste = if sub_porciones > 0.0 {
-                        (cantidad / sub_porciones) * sub_total * (1.0 + merma / 100.0)
+                        (cantidad / sub_porciones) * sub_total / (1.0 - merma / 100.0).max(0.01)
                     } else {
                         0.0
                     };
@@ -734,7 +734,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
                     let precio_por_ud = if cantidad > 0.0 {
                         prop_coste / cantidad
                     } else if sub_porciones > 0.0 {
-                        (sub_total / sub_porciones) * (1.0 + merma / 100.0)
+                        (sub_total / sub_porciones) / (1.0 - merma / 100.0).max(0.01)
                     } else {
                         0.0
                     };
@@ -773,7 +773,7 @@ async fn get_receta_coste(receta_id: i64) -> Result<CosteReceta, String> {
             else { cantidad };
 
             let coste = if let Some(pu) = precio_unitario {
-                cantidad_base * pu * (1.0 + merma / 100.0)
+                cantidad_base * pu / (1.0 - merma / 100.0).max(0.01)
             } else { 0.0 };
 
             // Separar envases: porción se suma por porción, encargo se suma al total encargo
@@ -2063,7 +2063,7 @@ async fn get_guarnicion_coste(guarnicion_id: i64) -> Result<CosteGuarnicion, Str
         else { cantidad };
 
         let coste = if let Some(pu) = precio_unitario {
-            cantidad_base * pu * (1.0 + merma / 100.0)
+            cantidad_base * pu / (1.0 - merma / 100.0).max(0.01)
         } else { 0.0 };
 
         coste_total += coste;
@@ -2383,7 +2383,7 @@ fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pi
                 let sub_porciones: f64 = sqlx::query_scalar(
                     "SELECT CAST(porciones AS DOUBLE) FROM recetas WHERE id = ?"
                 ).bind(sub_rid).fetch_optional(pool).await.ok().flatten().unwrap_or(1.0);
-                let prop_coste = if sub_porciones > 0.0 { (cantidad / sub_porciones) * sub_result.0 * (1.0 + merma / 100.0) } else { 0.0 };
+                let prop_coste = if sub_porciones > 0.0 { (cantidad / sub_porciones) * sub_result.0 / (1.0 - merma / 100.0).max(0.01) } else { 0.0 };
                 coste_total += prop_coste;
             } else if let Some(iid) = ingrediente_id {
                 // Ingrediente directo
@@ -2397,7 +2397,7 @@ fn calcular_coste_receta(pool: &sqlx::MySqlPool, receta_id: i64) -> std::pin::Pi
                     else if (unidad == "kg" && unidad_base == "g") || (unidad == "l" && unidad_base == "ml") { cantidad * 1000.0 }
                     else if (unidad == "g" && unidad_base == "kg") || (unidad == "ml" && unidad_base == "l") { cantidad / 1000.0 }
                     else { cantidad };
-                    let item_cost = cantidad_base * precio * (1.0 + merma / 100.0);
+                    let item_cost = cantidad_base * precio / (1.0 - merma / 100.0).max(0.01);
                     match tipo_envase.as_deref() {
                         Some("porcion") => coste_envase_porcion += item_cost,
                         Some("encargo") => coste_envase_encargo += item_cost,
@@ -2676,14 +2676,14 @@ async fn get_dashboard_data() -> Result<DashboardData, String> {
 
     // Average food cost across all recipes with prices
     let food_cost_medio: Option<f64> = sqlx::query(
-        "SELECT CAST(AVG(CASE WHEN precio_venta > 0 THEN (coste.porce / precio_venta) * 100 END) AS DOUBLE) FROM (SELECT r.id, r.precio_venta, CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) AS DOUBLE) AS porce FROM recetas r INNER JOIN receta_ingredientes ri ON r.id = ri.receta_id LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 GROUP BY r.id) AS coste"
+        "SELECT CAST(AVG(CASE WHEN precio_venta > 0 THEN (coste.porce / precio_venta) * 100 END) AS DOUBLE) FROM (SELECT r.id, r.precio_venta, CAST(SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) / GREATEST(1 - ri.merma_porcentaje / 100, 0.01)) AS DOUBLE) AS porce FROM recetas r INNER JOIN receta_ingredientes ri ON r.id = ri.receta_id LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 GROUP BY r.id) AS coste"
     )
     .fetch_optional(pool).await.map_err(|e| e.to_string())?
     .and_then(|r| r.try_get::<f64, _>(0).ok());
 
     // Most profitable recipe (lowest food cost %)
     let receta_mas_rentable: Option<String> = sqlx::query_scalar(
-        "SELECT r.nombre FROM recetas r INNER JOIN (SELECT ri.receta_id, SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) * (1 + ri.merma_porcentaje / 100)) AS coste FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 GROUP BY ri.receta_id) AS c ON r.id = c.receta_id WHERE r.precio_venta > 0 ORDER BY (c.coste / r.precio_venta) ASC LIMIT 1"
+        "SELECT r.nombre FROM recetas r INNER JOIN (SELECT ri.receta_id, SUM(ri.cantidad * COALESCE(ip.precio_por_unidad_base, 0) / GREATEST(1 - ri.merma_porcentaje / 100, 0.01)) AS coste FROM receta_ingredientes ri LEFT JOIN ingrediente_precios ip ON ri.ingrediente_id = ip.ingrediente_id AND ip.es_predeterminado = 1 GROUP BY ri.receta_id) AS c ON r.id = c.receta_id WHERE r.precio_venta > 0 ORDER BY (c.coste / r.precio_venta) ASC LIMIT 1"
     )
     .fetch_optional(pool).await.map_err(|e| e.to_string())?;
 
@@ -4040,7 +4040,7 @@ fn expandir_receta<'a>(
 
         let mut salida: Vec<(i64, f64)> = Vec::new();
         for (ingrediente_id, sub_receta_id, cantidad, unidad, merma) in filas {
-            let cantidad_linea = cantidad * (1.0 + merma / 100.0) * factor;
+            let cantidad_linea = cantidad / (1.0 - merma / 100.0).max(0.01) * factor;
             if let Some(sub_id) = sub_receta_id {
                 let porciones_sub: f64 = sqlx::query_scalar::<_, f64>(
                     "SELECT COALESCE(porciones, 1) FROM recetas WHERE id = ?"

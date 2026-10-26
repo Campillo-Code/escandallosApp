@@ -206,7 +206,7 @@ export default function Recetas() {
 
   const recalculoCosteTotal = recalculoIngredientes.reduce((sum, ci) => {
     if (ci.precioUnitario == null) return sum;
-    return sum + ci.cantidad * ci.precioUnitario * (1 + ci.merma / 100);
+    return sum + (ci.cantidad * ci.precioUnitario) / Math.max(0.01, 1 - ci.merma / 100);
   }, 0);
 
   const recalculoCostePorcion = recalculoPorciones > 0 ? recalculoCosteTotal / recalculoPorciones : recalculoCosteTotal;
@@ -1523,7 +1523,7 @@ export default function Recetas() {
                     </thead>
                     <tbody className="divide-y">
                       {recalculoIngredientes.map((ci) => {
-                        const coste = ci.precioUnitario != null ? ci.cantidad * ci.precioUnitario * (1 + ci.merma / 100) : 0;
+                        const coste = ci.precioUnitario != null ? (ci.cantidad * ci.precioUnitario) / Math.max(0.01, 1 - ci.merma / 100) : 0;
                         return (
                           <tr key={ci.id} className="hover:bg-gray-50">
                             <td className="px-4 py-3 text-sm font-medium text-gray-800">{ci.nombre}</td>
