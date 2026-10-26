@@ -340,10 +340,12 @@ async fn run_migrations(pool: &MySqlPool) {
         primero_id INT NULL,
         segundo_id INT NULL,
         postre_id INT NULL,
-        precio_base DECIMAL(10,2) NOT NULL DEFAULT 12,
+        precio_base DECIMAL(10,2) NOT NULL DEFAULT 11,
         observaciones TEXT NULL,
         UNIQUE KEY idx_plan_fecha (fecha)
     )").execute(pool).await;
+    // Bases existentes: el precio por defecto del menú pasa de 12 a 11
+    let _ = sqlx::query("ALTER TABLE planificacion_dia ALTER COLUMN precio_base SET DEFAULT 11").execute(pool).await;
     let _ = sqlx::query("CREATE TABLE IF NOT EXISTS planificacion_suelto (
         id INT AUTO_INCREMENT PRIMARY KEY,
         fecha DATE NOT NULL,

@@ -68,7 +68,7 @@ function diaVacio(fecha: string): DiaPlan {
     primero_id: null,
     segundo_id: null,
     postre_id: null,
-    precio_base: 12,
+    precio_base: 11,
     observaciones: null,
     sueltos: [],
   };
@@ -132,10 +132,13 @@ export default function Planificacion() {
     loadCatalogo();
   }, []);
 
-  const platosDe = (catName: string) => {
-    const cat = categorias.find((c) => c.nombre.toLowerCase().includes(catName));
-    if (!cat) return [];
-    return platos.filter((p) => p.categoria_id === cat.id);
+  const platosDe = (...terminos: string[]) => {
+    const ids = new Set(
+      categorias
+        .filter((c) => terminos.some((t) => c.nombre.toLowerCase().includes(t)))
+        .map((c) => c.id)
+    );
+    return platos.filter((p) => ids.has(p.categoria_id));
   };
 
   const guardar = async (dia: DiaPlan) => {
@@ -366,7 +369,7 @@ export default function Planificacion() {
                   value: p.id,
                   label: `${p.nombre}${p.plus > 0 ? ` (+${p.plus.toFixed(2)}€)` : ""}${!p.receta_id ? " ⚠" : ""}`,
                 }));
-              const opcionesSueltos = platosDe("raci").map((p) => ({
+              const opcionesSueltos = platosDe("primero", "segundo", "raci", "dip", "masa").map((p) => ({
                 value: p.id,
                 label: `${p.nombre}${!p.receta_id ? " ⚠" : ""}`,
               }));
