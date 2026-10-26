@@ -47,6 +47,7 @@ interface PlatoCaja {
   activo: boolean;
   precio_venta_entero: number | null;
   tipo_receta: string | null;
+  iva_porcentaje?: number;
 }
 
 export default function Pedidos() {
@@ -68,7 +69,7 @@ export default function Pedidos() {
   const [formTipo, setFormTipo] = useState<"pedido" | "encargo">("pedido");
   const [formNombre, setFormNombre] = useState("");
   const [formTelefono, setFormTelefono] = useState("");
-  const [formItems, setFormItems] = useState<{ categoria: string; descripcion: string; cantidad: number; precio_unitario: number; subtotal: number; modificacion?: string; precio_modificacion?: number }[]>([]);
+  const [formItems, setFormItems] = useState<{ categoria: string; descripcion: string; cantidad: number; precio_unitario: number; subtotal: number; iva_porcentaje: number; modificacion?: string; precio_modificacion?: number }[]>([]);
   const [formNotas, setFormNotas] = useState("");
   const [formFechaEntrega, setFormFechaEntrega] = useState("");
   const [categorias, setCategorias] = useState<CajaCategoria[]>([]);
@@ -214,7 +215,7 @@ export default function Pedidos() {
     if (formTipo === 'encargo' && plato.precio_venta_entero) {
       precio = plato.precio_venta_entero;
     }
-    setFormItems(prev => [...prev, { categoria: cat?.nombre || "", descripcion: plato.nombre, cantidad: 1, precio_unitario: precio, subtotal: precio, modificacion: "", precio_modificacion: 0 }]);
+    setFormItems(prev => [...prev, { categoria: cat?.nombre || "", descripcion: plato.nombre, cantidad: 1, precio_unitario: precio, subtotal: precio, iva_porcentaje: plato.iva_porcentaje ?? 10, modificacion: "", precio_modificacion: 0 }]);
   };
 
   const updateItemCantidad = (index: number, cantidad: number) => {
@@ -260,6 +261,7 @@ export default function Pedidos() {
       cantidad: 1,
       precio_unitario: precio,
       subtotal: precio,
+      iva_porcentaje: 10,
       modificacion: "",
       precio_modificacion: 0,
     }]);
