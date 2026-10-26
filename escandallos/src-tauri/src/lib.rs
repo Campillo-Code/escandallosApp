@@ -510,6 +510,38 @@ async fn delete_receta_ingrediente(id: i64) -> Result<(), String> {
     Ok(())
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RecetaIngredienteUpdateInput {
+    pub id: i64,
+    pub ingrediente_id: Option<i64>,
+    pub sub_receta_id: Option<i64>,
+    pub cantidad: f64,
+    pub unidad: String,
+    pub merma_porcentaje: f64,
+    pub notas: Option<String>,
+    pub tipo_envase: Option<String>,
+}
+
+#[tauri::command]
+async fn update_receta_ingrediente(input: RecetaIngredienteUpdateInput) -> Result<(), String> {
+    let pool = &db::get_pool();
+    sqlx::query(
+        "UPDATE receta_ingredientes SET ingrediente_id = ?, sub_receta_id = ?, cantidad = ?, unidad = ?, merma_porcentaje = ?, notas = ?, tipo_envase = ? WHERE id = ?"
+    )
+    .bind(input.ingrediente_id)
+    .bind(input.sub_receta_id)
+    .bind(input.cantidad)
+    .bind(&input.unidad)
+    .bind(input.merma_porcentaje)
+    .bind(&input.notas)
+    .bind(&input.tipo_envase)
+    .bind(input.id)
+    .execute(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ========================================
 // RECETAS BASE (es_base = true)
 // ========================================
@@ -1298,15 +1330,6 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
 
     for detalle in &detalles {
         // Update price
-        let current_price: Option<f64> = sqlx::query(
-            "SELECT CAST(precio_por_unidad_base AS DOUBLE) FROM ingrediente_precios WHERE ingrediente_id = ? AND es_predeterminado = 1 LIMIT 1"
-        )
-        .bind(detalle.ingrediente_id)
-        .fetch_optional(pool)
-        .await
-        .map_err(|e| e.to_string())?
-        .and_then(|r| r.try_get::<f64, _>(0).ok());
-
         // El coste grabado es lo que se paga de verdad: INCLUYE el IVA.
         // Sin marcar → el importe es la base y se le suma el IVA de su tasa;
         // marcado "con IVA" → el importe introducido ya es el pago completo.
@@ -1316,13 +1339,33 @@ async fn procesar_albaran(albaran_id: i64) -> Result<(), String> {
             detalle.precio_unitario
         };
 
-        if let Some(_prev_price) = current_price {
+        // Precio por PROVEEDOR: se actualiza (o crea) la fila del proveedor de
+        // este albarán y pasa a ser la predeterminada — lo último comprado es
+        // el precio activo de los escandallos. Se conservan los precios de los
+        // demás proveedores para poder compararlos.
+        sqlx::query("UPDATE ingrediente_precios SET es_predeterminado = 0 WHERE ingrediente_id = ?")
+            .bind(detalle.ingrediente_id)
+            .execute(pool)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        let fila_proveedor: Option<(i64,)> = sqlx::query_as(
+            "SELECT id FROM ingrediente_precios WHERE ingrediente_id = ? AND proveedor_id = ? LIMIT 1"
+        )
+        .bind(detalle.ingrediente_id)
+        .bind(proveedor_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if let Some((id,)) = fila_proveedor {
             sqlx::query(
-                "UPDATE ingrediente_precios SET precio_por_unidad_base = ?, unidad = ?, fecha_actualizacion = CURRENT_TIMESTAMP WHERE ingrediente_id = ? AND es_predeterminado = 1"
+                "UPDATE ingrediente_precios SET precio = ?, precio_por_unidad_base = ?, unidad = ?, es_predeterminado = 1, fecha_actualizacion = CURRENT_TIMESTAMP WHERE id = ?"
             )
             .bind(precio_coste)
+            .bind(precio_coste)
             .bind(&detalle.unidad)
-            .bind(detalle.ingrediente_id)
+            .bind(id)
             .execute(pool)
             .await
             .map_err(|e| e.to_string())?;
@@ -4739,6 +4782,7 @@ pub fn run() {
             get_receta_ingredientes,
             add_receta_ingrediente,
             delete_receta_ingrediente,
+            update_receta_ingrediente,
             get_recetas_base,
             get_receta_alergenos,
             get_receta_coste,

@@ -62,6 +62,7 @@ interface RecetaIngrediente {
   merma_porcentaje: number;
   notas: string | null;
   orden: number;
+  tipo_envase: string | null;
 }
 
 interface CosteIngrediente {
@@ -147,6 +148,7 @@ export default function Recetas() {
   const [selectedReceta, setSelectedReceta] = useState<Receta | null>(null);
   const [recetaIngredientes, setRecetaIngredientes] = useState<RecetaIngrediente[]>([]);
   const [showIngredienteForm, setShowIngredienteForm] = useState(false);
+  const [editandoLinea, setEditandoLinea] = useState<RecetaIngrediente | null>(null);
   const [costeReceta, setCosteReceta] = useState<CosteReceta | null>(null);
   const [alergenosReceta, setAlergenosReceta] = useState<string[]>([]);
   const [alergenosMap, setAlergenosMap] = useState<Record<number, string[]>>({});
@@ -470,6 +472,34 @@ export default function Recetas() {
     if (tipoIngrediente === "envase" && (!ingredienteId || ingredienteId === 0)) { alert("Selecciona un envase"); return; }
     if (tipoIngrediente === "receta" && (!subRecetaId || subRecetaId === 0)) { alert("Selecciona una receta base"); return; }
     if (!cantidad || cantidad <= 0) { alert("Introduce una cantidad válida"); return; }
+
+    if (editandoLinea) {
+      try {
+        await invoke("update_receta_ingrediente", {
+          input: {
+            id: editandoLinea.id,
+            ingrediente_id: ingredienteId,
+            sub_receta_id: subRecetaId,
+            cantidad,
+            unidad: tipoIngrediente === "receta" ? "ud" : data.unidad,
+            merma_porcentaje: Number(data.merma_porcentaje) || 0,
+            notas: data.notas || null,
+            tipo_envase: tipoIngrediente === "envase" ? tipoEnvase : null,
+          },
+        });
+        setEditandoLinea(null);
+        setShowIngredienteForm(false);
+        resetIng({ merma_porcentaje: "0" });
+        setTipoIngrediente("ingrediente");
+        loadRecetaIngredientes(recetaId);
+        loadCosteReceta(recetaId);
+      } catch (e) {
+        console.error("Error updating ingrediente:", e);
+        alert("Error: " + e);
+      }
+      return;
+    }
+
     const input = {
       receta_id: recetaId,
       ingrediente_id: ingredienteId,
@@ -529,6 +559,22 @@ export default function Recetas() {
     } catch (e) {
       console.error("Error deleting receta:", e);
     }
+  };
+
+  const abrirEdicionLinea = (ri: RecetaIngrediente) => {
+    const tipo = ri.sub_receta_id ? "receta" : ri.tipo_envase ? "envase" : "ingrediente";
+    setTipoIngrediente(tipo);
+    if (tipo === "envase") setTipoEnvase(ri.tipo_envase === "encargo" ? "encargo" : "porcion");
+    resetIng({
+      ingrediente_id: ri.ingrediente_id ?? 0,
+      sub_receta_id: ri.sub_receta_id ?? 0,
+      cantidad: String(ri.cantidad),
+      unidad: ri.unidad,
+      merma_porcentaje: String(ri.merma_porcentaje),
+      notas: ri.notas ?? "",
+    });
+    setEditandoLinea(ri);
+    setShowIngredienteForm(true);
   };
 
   const handleDeleteIngrediente = async (id: number) => {
@@ -750,7 +796,7 @@ export default function Recetas() {
               <h3 className="text-lg font-semibold">Ingredientes</h3>
               {!showIngredienteForm && (
                 <button
-                  onClick={() => { resetIng(); setShowIngredienteForm(true); }}
+                  onClick={() => { resetIng(); setEditandoLinea(null); setShowIngredienteForm(true); }}
                   className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <Plus size={18} />
@@ -762,11 +808,12 @@ export default function Recetas() {
             {showIngredienteForm && (
               <div className="bg-white rounded-lg shadow p-6 mb-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold">Añadir Ingrediente</h3>
-                  <button onClick={() => { setShowIngredienteForm(false); setTipoIngrediente("ingrediente"); resetIng({ merma_porcentaje: "0" }); }} className="text-gray-400 hover:text-gray-600">
+                  <h3 className="text-lg font-semibold">{editandoLinea ? "Editar línea" : "Añadir Ingrediente"}</h3>
+                  <button onClick={() => { setShowIngredienteForm(false); setEditandoLinea(null); setTipoIngrediente("ingrediente"); resetIng({ merma_porcentaje: "0" }); }} className="text-gray-400 hover:text-gray-600">
                     <X size={20} />
                   </button>
                 </div>
+                {!editandoLinea && (
                 <div className="flex gap-2 mb-4">
                   <button type="button" onClick={() => setTipoIngrediente("ingrediente")}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tipoIngrediente === "ingrediente" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
@@ -781,6 +828,7 @@ export default function Recetas() {
                     📦 Envase
                   </button>
                 </div>
+                )}
                 <form onSubmit={handleSubmitIng(onSubmitIngrediente)} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -903,7 +951,7 @@ export default function Recetas() {
                   <div className="md:col-span-2 flex gap-3 justify-end">
                     <button
                       type="button"
-                      onClick={() => setShowIngredienteForm(false)}
+                      onClick={() => { setShowIngredienteForm(false); setEditandoLinea(null); }}
                       className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                     >
                       Cancelar
@@ -913,7 +961,7 @@ export default function Recetas() {
                       disabled={isSubmittingIng}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
                     >
-                      {isSubmittingIng ? "Añadiendo..." : "Añadir"}
+                      {isSubmittingIng ? "Guardando..." : editandoLinea ? "Guardar cambios" : "Añadir"}
                     </button>
                   </div>
                 </form>
@@ -961,8 +1009,16 @@ export default function Recetas() {
                         <td className="px-4 py-3 text-sm text-gray-600">{ri.notas ?? "-"}</td>
                         <td className="px-4 py-3 text-sm text-right">
                           <button
+                            onClick={() => abrirEdicionLinea(ri)}
+                            className="text-blue-600 hover:text-blue-800 mr-3"
+                            title="Editar línea"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
                             onClick={() => handleDeleteIngrediente(ri.id)}
                             className="text-red-600 hover:text-red-800"
+                            title="Eliminar línea"
                           >
                             <Trash2 size={16} />
                           </button>
