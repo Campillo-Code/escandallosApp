@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ShoppingCart, Check, X, Plus, Trash2, CreditCard } from "lucide-react";
+import { ShoppingCart, Check, X, Plus, Trash2, CreditCard, Pencil } from "lucide-react";
 import SearchableSelect from "../components/SearchableSelect";
 import DateInput from "../components/DateInput";
 
@@ -66,6 +66,7 @@ export default function Pedidos() {
 
   // Formulario nuevo pedido
   const [showForm, setShowForm] = useState(false);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
   const [formTipo, setFormTipo] = useState<"pedido" | "encargo">("pedido");
   const [formNombre, setFormNombre] = useState("");
   const [formTelefono, setFormTelefono] = useState("");
@@ -267,13 +268,42 @@ export default function Pedidos() {
     }]);
   };
 
+  const openEditPedido = (pedido: WhatsappPedido) => {
+    const parsed = getItems(pedido.items);
+    setFormTipo((pedido.tipo === "encargo" ? "encargo" : "pedido") as "pedido" | "encargo");
+    setFormNombre(pedido.nombre_cliente || "");
+    setFormTelefono(pedido.telefono === "manual" ? "" : pedido.telefono);
+    setFormNotas(pedido.notas || "");
+    setFormFechaEntrega(pedido.fecha_entrega || "");
+    setFormItems(parsed.map(it => {
+      const precio = it.precio_unitario ?? it.precio ?? 0;
+      const cantidad = it.cantidad || 1;
+      return {
+        categoria: it.categoria || "",
+        descripcion: it.descripcion || it.nombre || "—",
+        cantidad,
+        precio_unitario: precio,
+        subtotal: it.subtotal ?? precio * cantidad,
+        iva_porcentaje: it.iva_porcentaje ?? 10,
+        modificacion: it.modificacion || "",
+        precio_modificacion: it.precio_modificacion || 0,
+      };
+    }));
+    setEditandoId(pedido.id);
+    setShowForm(true);
+  };
+
   const handleCrearPedido = async () => {
     if (formItems.length === 0) { alert("Añade al menos un plato"); return; }
+    const input = { telefono: formTelefono || "manual", nombre_cliente: formNombre || null, items: formItems, total: formTotal, notas: formNotas || null, tipo: formTipo, fecha_entrega: formFechaEntrega || null };
     try {
-      await invoke("create_whatsapp_pedido_manual", {
-        input: { telefono: formTelefono || "manual", nombre_cliente: formNombre || null, items: formItems, total: formTotal, notas: formNotas || null, tipo: formTipo, fecha_entrega: formFechaEntrega || null },
-      });
+      if (editandoId != null) {
+        await invoke("update_whatsapp_pedido_manual", { id: editandoId, input });
+      } else {
+        await invoke("create_whatsapp_pedido_manual", { input });
+      }
       setShowForm(false);
+      setEditandoId(null);
       setFormNombre(""); setFormTelefono(""); setFormItems([]); setFormNotas(""); setFormFechaEntrega("");
       loadPedidos();
     } catch (e) { alert("Error: " + e); }
@@ -290,7 +320,7 @@ export default function Pedidos() {
             <span className="ml-2 bg-red-500 text-white text-sm font-bold px-2 py-0.5 rounded-full animate-pulse">{pedidoCount} nuevos</span>
           )}
         </h2>
-        <button onClick={() => { setShowForm(true); setFormFechaEntrega(hoyISO()); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+        <button onClick={() => { setShowForm(true); setFormFechaEntrega(hoyISO()); setEditandoId(null); }} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
           <Plus size={18} /> Nuevo Pedido
         </button>
       </div>
@@ -371,6 +401,12 @@ export default function Pedidos() {
                   </div>
                   <div className="text-right flex items-center gap-2">
                     <div className="font-bold text-gray-800">{pedido.total.toFixed(2)} €</div>
+                    {pedido.estado !== "cobrado" && (
+                      <button onClick={(e) => { e.stopPropagation(); openEditPedido(pedido); }}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg hover:bg-blue-50" title="Editar pedido">
+                        <Pencil size={14} />
+                      </button>
+                    )}
                     {pedido.estado === "pendiente" && (
                       <div className="flex gap-1">
                         <button onClick={(e) => { e.stopPropagation(); handleConfirm(pedido.id); }}
@@ -470,8 +506,8 @@ export default function Pedidos() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h2 className="text-lg font-semibold">Nuevo Pedido</h2>
-              <button onClick={() => setShowForm(false)} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
+              <h2 className="text-lg font-semibold">{editandoId != null ? "Editar pedido" : "Nuevo Pedido"}</h2>
+              <button onClick={() => { setShowForm(false); setEditandoId(null); }} className="p-1 hover:bg-gray-100 rounded-lg"><X size={20} /></button>
             </div>
             <div className="flex-1 overflow-auto p-6 space-y-4">
               <div className="flex gap-2">
@@ -583,8 +619,10 @@ export default function Pedidos() {
               </div>
             </div>
             <div className="flex gap-3 justify-end px-6 py-4 border-t bg-gray-50 rounded-b-xl">
-              <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
-              <button onClick={handleCrearPedido} disabled={formItems.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium">Crear pedido ({formTotal.toFixed(2)} €)</button>
+              <button onClick={() => { setShowForm(false); setEditandoId(null); }} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancelar</button>
+              <button onClick={handleCrearPedido} disabled={formItems.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-40 font-medium">
+                {editandoId != null ? "Guardar cambios" : `Crear pedido (${formTotal.toFixed(2)} €)`}
+              </button>
             </div>
           </div>
         </div>

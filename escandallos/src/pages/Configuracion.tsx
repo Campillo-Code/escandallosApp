@@ -35,7 +35,7 @@ export default function Configuracion() {
   const [appVersion, setAppVersion] = useState<string>("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [serialPorts, setSerialPorts] = useState<string[]>([]);
-  const [selectedPort, setSelectedPort] = useState<string>("");
+  const [selectedPort, setSelectedPort] = useState<string>(() => localStorage.getItem("cash_drawer_port") || "");
   const [cashDrawerTest, setCashDrawerTest] = useState<{ ok: boolean; msg: string } | null>(null);
   const [testingDrawer, setTestingDrawer] = useState(false);
 
@@ -65,6 +65,10 @@ export default function Configuracion() {
   };
 
   useEffect(() => { getVersion().then(setAppVersion).catch(() => {}); }, []);
+
+  useEffect(() => {
+    if (selectedPort) localStorage.setItem("cash_drawer_port", selectedPort);
+  }, [selectedPort]);
 
   const checkForUpdate = async () => {
     setCheckingUpdate(true);

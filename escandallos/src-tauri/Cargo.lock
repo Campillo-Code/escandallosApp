@@ -1124,7 +1124,7 @@ dependencies = [
 
 [[package]]
 name = "escandallos"
-version = "1.0.9"
+version = "1.1.0"
 dependencies = [
  "chrono",
  "pdf-extract",

@@ -257,7 +257,11 @@ export default function Caja() {
       console.log("[Caja] Ticket creado OK");
       // Abrir caja registradora si está en efectivo
       if (metodoPago === "efectivo") {
-        try { await invoke("open_cash_drawer"); } catch (e) { console.warn("[Caja] No se pudo abrir la caja:", e); }
+        try {
+          await invoke("open_cash_drawer", { puerto: localStorage.getItem("cash_drawer_port") || null });
+        } catch (e) {
+          alert("No se pudo abrir la caja registradora: " + e);
+        }
       }
       setTicket([]);
       setNotas("");
@@ -814,6 +818,10 @@ export default function Caja() {
                   })}
                 </div>
               )}
+            </div>
+            <div className="border-t px-6 py-3 flex justify-between items-center bg-gray-50 rounded-b-xl">
+              <span className="text-sm text-gray-600 font-medium">Total ganado hoy</span>
+              <span className="text-lg font-bold text-gray-800">{ticketsHoy.reduce((s, t) => s + t.total, 0).toFixed(2)} €</span>
             </div>
           </div>
         </div>

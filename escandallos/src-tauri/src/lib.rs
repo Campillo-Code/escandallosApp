@@ -3807,6 +3807,25 @@ async fn create_whatsapp_pedido_manual(input: PedidoManualInput) -> Result<i64, 
     Ok(result.last_insert_id() as i64)
 }
 
+#[tauri::command]
+async fn update_whatsapp_pedido_manual(id: i64, input: PedidoManualInput) -> Result<(), String> {
+    let pool = &db::get_pool();
+    let items_json = serde_json::to_string(&input.items).map_err(|e| e.to_string())?;
+    sqlx::query(
+        "UPDATE whatsapp_pedidos SET telefono = ?, nombre_cliente = ?, items = ?, total = ?, notas = ?, tipo = ?, fecha_entrega = ? WHERE id = ?"
+    )
+    .bind(&input.telefono)
+    .bind(&input.nombre_cliente)
+    .bind(&items_json)
+    .bind(input.total)
+    .bind(&input.notas)
+    .bind(&input.tipo)
+    .bind(&input.fecha_entrega)
+    .bind(id)
+    .execute(pool).await.map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // ========================================
 // WHATSAPP CHAT
 // ========================================
@@ -4513,8 +4532,10 @@ async fn execute_despiece(despiece_id: i64) -> Result<String, String> {
 // ========================================
 
 #[tauri::command]
-async fn open_cash_drawer() -> Result<String, String> {
-    let port_name = std::env::var("CASH_DRAWER_PORT").unwrap_or_else(|_| {
+async fn open_cash_drawer(puerto: Option<String>) -> Result<String, String> {
+    let port_name = puerto.filter(|p| !p.is_empty()).or_else(|| {
+        std::env::var("CASH_DRAWER_PORT").ok()
+    }).unwrap_or_else(|| {
         if cfg!(target_os = "linux") { "/dev/ttyUSB0".to_string() } else { "COM4".to_string() }
     });
 
@@ -4878,6 +4899,7 @@ pub fn run() {
             update_whatsapp_pedido_estado,
             get_whatsapp_pedidos_nuevos,
             create_whatsapp_pedido_manual,
+            update_whatsapp_pedido_manual,
             delete_whatsapp_pedido,
             get_whatsapp_conversaciones,
             get_whatsapp_messages,
