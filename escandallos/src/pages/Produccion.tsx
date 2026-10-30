@@ -12,7 +12,18 @@ import { exportEtiquetaPDF, EtiquetaData } from "../lib/exports";
 registerLocale("es", es);
 
 interface Receta { id: number; nombre: string; }
-interface LoteIngrediente { id: number; ingrediente_nombre: string | null; numero_lote: string; unidad: string; cantidad_recibida: number; }
+interface LoteIngrediente { id: number; ingrediente_id: number; ingrediente_nombre: string | null; numero_lote: string; unidad: string; cantidad_recibida: number; fecha_caducidad: string | null; }
+
+interface RellenoLinea {
+  ingrediente_id: number;
+  ingrediente_nombre: string;
+  lote_id: number | null;
+  lote_numero: string | null;
+  cantidad: number;
+  unidad: string;
+  sin_lote: boolean;
+  faltante: number;
+}
 
 interface Produccion {
   id: number;
@@ -32,6 +43,9 @@ interface DetalleLine {
   cantidad_utilizada: number;
   lote_numero?: string;
   ingrediente_nombre?: string;
+  ingrediente_id?: number;
+  sin_lote?: boolean;
+  faltante?: number;
 }
 
 const emptyForm = {
@@ -102,7 +116,40 @@ export default function Produccion() {
     setDetalles(prev => prev.filter((_, i) => i !== idx));
   };
 
+  const rellenarDesdeReceta = async () => {
+    if (!form.receta_id) { alert("Selecciona primero la receta"); return; }
+    if (detalles.length > 0 && !confirm("Esto sustituirá las filas del detalle actual. ¿Continuar?")) return;
+    try {
+      const relleno = await invoke<RellenoLinea[]>("rellenar_detalle_desde_receta", { recetaId: form.receta_id });
+      if (relleno.length === 0) {
+        alert("La receta no tiene ingredientes físicos (las sub-recetas y los envases no generan lote)");
+        return;
+      }
+      setDetalles(relleno.map(r => ({
+        lote_ingrediente_id: r.lote_id ?? 0,
+        cantidad_utilizada: r.cantidad,
+        ingrediente_id: r.ingrediente_id,
+        ingrediente_nombre: r.ingrediente_nombre,
+        sin_lote: r.sin_lote,
+        faltante: r.faltante,
+      })));
+      const avisos = relleno
+        .filter(r => r.faltante > 0)
+        .map(r => `• ${r.ingrediente_nombre}: faltan ${r.faltante} ${r.unidad} de saldo en lotes`);
+      if (avisos.length > 0) {
+        alert("Stock de lotes insuficiente:\n\n" + avisos.join("\n") + "\n\nSe han incluido solo las cantidades disponibles.");
+      }
+    } catch (e) {
+      alert("Error al rellenar: " + e);
+    }
+  };
+
   const handleSave = async () => {
+    const sinLote = detalles.filter(d => !(d.lote_ingrediente_id > 0));
+    if (sinLote.length > 0) {
+      const nombres = sinLote.map(d => d.ingrediente_nombre ?? "lote sin asignar").join(", ");
+      if (!confirm(`Falta lote de: ${nombres}.\n\n¿Crear la producción igualmente? (esas líneas no se incluirán ni descontarán stock)`)) return;
+    }
     try {
       const input = {
         ...form,
@@ -212,22 +259,56 @@ export default function Produccion() {
           <div className="mb-4">
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-gray-700">Lotes de ingredientes utilizados</label>
-              <button onClick={addDetalle} type="button" className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={14} /> Añadir</button>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={rellenarDesdeReceta}
+                  type="button"
+                  disabled={!form.receta_id}
+                  className="text-sm text-emerald-700 hover:text-emerald-900 disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Crea una fila por cada ingrediente del escandallo con el lote más antiguo disponible"
+                >
+                  Rellenar desde el escandallo
+                </button>
+                <button onClick={addDetalle} type="button" className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"><Plus size={14} /> Añadir</button>
+              </div>
             </div>
             {detalles.length === 0 && <p className="text-xs text-gray-400">Sin lotes asignados</p>}
-            {detalles.map((d, idx) => (
-              <div key={idx} className="flex gap-2 mb-2 items-center">
-                <SearchableSelect
-                  options={lotes.map(l => ({ value: l.id, label: `${l.ingrediente_nombre} — L${l.numero_lote} (${l.cantidad_recibida} ${l.unidad})` }))}
-                  value={d.lote_ingrediente_id}
-                  onChange={(val) => updateDetalle(idx, "lote_ingrediente_id", val)}
-                  placeholder="Seleccionar lote..."
-                  className="flex-1"
-                />
-                <input type="number" step="0.01" value={d.cantidad_utilizada} onChange={e => updateDetalle(idx, "cantidad_utilizada", parseFloat(e.target.value) || 0)} className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Cantidad" />
-                <button onClick={() => removeDetalle(idx)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
-              </div>
-            ))}
+            {detalles.map((d, idx) => {
+              const opciones = d.ingrediente_id ? lotes.filter(l => l.ingrediente_id === d.ingrediente_id) : lotes;
+              const hoy = new Date().toISOString().slice(0, 10);
+              return (
+                <div key={idx} className="mb-2">
+                  {d.ingrediente_nombre && (
+                    <div className="flex items-center gap-2 text-xs mb-1">
+                      <span className="font-medium text-gray-700">{d.ingrediente_nombre}</span>
+                      {d.faltante != null && d.faltante > 0 && (
+                        <span className="text-amber-700 bg-amber-50 rounded px-1 py-0.5">faltan {d.faltante}</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex gap-2 items-center">
+                    <SearchableSelect
+                      options={opciones.map(l => ({
+                        value: l.id,
+                        label: `${l.fecha_caducidad && l.fecha_caducidad < hoy ? "⚠ " : ""}${l.ingrediente_nombre ?? "?"} — L${l.numero_lote} (${l.cantidad_recibida} ${l.unidad}${l.fecha_caducidad ? `, caduca ${l.fecha_caducidad}` : ""})`,
+                      }))}
+                      value={d.lote_ingrediente_id}
+                      onChange={(val) => {
+                        if (d.sin_lote && val > 0) {
+                          setDetalles(prev => prev.map((x, i) => i === idx ? { ...x, lote_ingrediente_id: val, sin_lote: false } : x));
+                        } else {
+                          updateDetalle(idx, "lote_ingrediente_id", val);
+                        }
+                      }}
+                      placeholder={d.sin_lote ? "Sin lote — elige otro o quita la fila" : "Seleccionar lote..."}
+                      className={`flex-1 ${d.sin_lote ? "[&_button]:border-red-300 [&_button]:bg-red-50" : ""}`}
+                    />
+                    <input type="number" step="0.01" value={d.cantidad_utilizada} onChange={e => updateDetalle(idx, "cantidad_utilizada", parseFloat(e.target.value) || 0)} className="w-24 border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Cantidad" />
+                    <button onClick={() => removeDetalle(idx)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="mb-4">

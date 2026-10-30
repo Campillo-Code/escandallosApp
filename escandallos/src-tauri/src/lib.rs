@@ -3036,6 +3036,108 @@ async fn get_produccion_hoy() -> Result<Vec<Produccion>, String> {
     Ok(rows)
 }
 
+#[derive(Debug, Serialize)]
+pub struct RellenoLinea {
+    pub ingrediente_id: i64,
+    pub ingrediente_nombre: String,
+    pub lote_id: Option<i64>,
+    pub lote_numero: Option<String>,
+    pub cantidad: f64,
+    pub unidad: String,
+    pub sin_lote: bool,
+    pub faltante: f64,
+}
+
+/// Rellena el detalle de una producción desde el escandallo de la receta:
+/// un ingrediente físico por línea (sin sub-recetas ni envases), repartiendo
+/// la necesidad entre los lotes más ANTIGUOS primero (por fecha de recepción)
+/// y usando el saldo real de cada lote (recibido - ya consumido).
+#[tauri::command]
+async fn rellenar_detalle_desde_receta(receta_id: i64) -> Result<Vec<RellenoLinea>, String> {
+    let pool = &db::get_pool();
+
+    let lineas: Vec<(i64, String, f64, String)> = sqlx::query_as(
+        "SELECT ri.ingrediente_id, i.nombre, CAST(ri.cantidad AS DOUBLE) AS cantidad, ri.unidad
+         FROM receta_ingredientes ri
+         INNER JOIN ingredientes i ON i.id = ri.ingrediente_id
+         WHERE ri.receta_id = ? AND ri.ingrediente_id IS NOT NULL
+           AND ri.sub_receta_id IS NULL AND ri.tipo_envase IS NULL
+         ORDER BY ri.orden",
+    )
+    .bind(receta_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut resultado: Vec<RellenoLinea> = Vec::new();
+
+    for (ingrediente_id, nombre, necesidad, unidad_linea) in lineas {
+        let lotes: Vec<(i64, String, String, f64)> = sqlx::query_as(
+            "SELECT l.id, l.numero_lote, l.unidad,
+                    (l.cantidad_recibida - COALESCE(
+                        (SELECT SUM(pd.cantidad_utilizada) FROM produccion_detalle pd WHERE pd.lote_ingrediente_id = l.id), 0
+                    )) AS saldo
+             FROM lotes_ingredientes l
+             WHERE l.ingrediente_id = ?
+             ORDER BY l.fecha_recepcion ASC, l.id ASC",
+        )
+        .bind(ingrediente_id)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        let mut pendiente = necesidad;
+        let mut creadas = 0usize;
+
+        for (lote_id, numero_lote, unidad_lote, saldo) in &lotes {
+            if pendiente <= 0.0001 {
+                break;
+            }
+            let saldo_en_linea = convertir_unidad(*saldo, unidad_lote, &unidad_linea);
+            if saldo_en_linea <= 0.0001 {
+                continue; // lote agotado
+            }
+            let toma = pendiente.min(saldo_en_linea);
+            let cantidad_lote = convertir_unidad(toma, &unidad_linea, unidad_lote);
+            resultado.push(RellenoLinea {
+                ingrediente_id,
+                ingrediente_nombre: nombre.clone(),
+                lote_id: Some(*lote_id),
+                lote_numero: Some(numero_lote.clone()),
+                cantidad: (cantidad_lote * 1000.0).round() / 1000.0,
+                unidad: unidad_lote.clone(),
+                sin_lote: false,
+                faltante: 0.0,
+            });
+            pendiente -= toma;
+            creadas += 1;
+        }
+
+        if pendiente > 0.0001 {
+            if creadas == 0 {
+                // Sin ningún lote de este ingrediente
+                resultado.push(RellenoLinea {
+                    ingrediente_id,
+                    ingrediente_nombre: nombre.clone(),
+                    lote_id: None,
+                    lote_numero: None,
+                    cantidad: necesidad,
+                    unidad: unidad_linea.clone(),
+                    sin_lote: true,
+                    faltante: (pendiente * 1000.0).round() / 1000.0,
+                });
+            } else {
+                // Cubierto parcialmente: se avisa en la última fila creada
+                if let Some(ultima) = resultado.iter_mut().rev().find(|r| r.ingrediente_id == ingrediente_id) {
+                    ultima.faltante = (pendiente * 1000.0).round() / 1000.0;
+                }
+            }
+        }
+    }
+
+    Ok(resultado)
+}
+
 // ========================================
 // ETIQUETAS
 // ========================================
@@ -4867,6 +4969,7 @@ pub fn run() {
             test_db_connection,
             activate_and_switch_db,
             get_lotes,
+            rellenar_detalle_desde_receta,
             create_lote,
             update_lote,
             delete_lote,
