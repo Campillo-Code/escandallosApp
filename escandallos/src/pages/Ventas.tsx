@@ -135,28 +135,32 @@ export default function Ventas() {
 
   const exportCSV = async () => {
     const rows = tab === "tickets"
-      ? tickets.flatMap(t => {
+      ? tickets.map(t => {
           const items: TicketItem[] = JSON.parse(t.items);
-          return items.map(item => {
+          let cuotaIva = 0;
+          const ivas = new Set<number>();
+          const partes = items.map(item => {
             const iva = item.iva_porcentaje ?? 10;
-            const baseImponible = item.subtotal / (1 + iva / 100);
-            const cuotaIva = item.subtotal - baseImponible;
-            return {
-              Fecha: t.fecha,
-              Hora: t.hora,
-              Tipo: t.tipo || "pedido",
-              Categoria: item.categoria,
-              Plato: item.descripcion,
-              Cantidad: item.cantidad,
-              "Precio Unitario": item.precio_unitario.toFixed(2),
-              Subtotal: item.subtotal.toFixed(2),
-              "Base Imponible": baseImponible.toFixed(2),
-              "IVA %": iva,
-              "IVA €": cuotaIva.toFixed(2),
-              Total: item.subtotal.toFixed(2),
-              "Método Pago": t.metodo_pago || "efectivo",
-            };
+            ivas.add(iva);
+            cuotaIva += item.subtotal - item.subtotal / (1 + iva / 100);
+            const cant = item.cantidad || 1;
+            const desc = item.descripcion || "";
+            return `${item.categoria ? item.categoria + ": " : ""}${desc} x${cant} (${item.subtotal.toFixed(2)} €)`;
           });
+          const total = t.total;
+          const baseImponible = total - cuotaIva;
+          return {
+            Fecha: t.fecha,
+            Hora: t.hora,
+            Tipo: t.tipo || "pedido",
+            Productos: partes.join(" | "),
+            Cantidad: items.reduce((s, i) => s + (i.cantidad || 1), 0),
+            "Base Imponible": baseImponible.toFixed(2),
+            "IVA %": ivas.size === 1 ? [...ivas][0] : "mixto",
+            "IVA €": cuotaIva.toFixed(2),
+            Total: total.toFixed(2),
+            "Método Pago": t.metodo_pago || "efectivo",
+          };
         })
       : ventas.map(v => {
           const iva = 10;

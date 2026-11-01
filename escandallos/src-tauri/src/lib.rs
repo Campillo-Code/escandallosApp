@@ -3074,9 +3074,9 @@ async fn rellenar_detalle_desde_receta(receta_id: i64) -> Result<Vec<RellenoLine
     for (ingrediente_id, nombre, necesidad, unidad_linea) in lineas {
         let lotes: Vec<(i64, String, String, f64)> = sqlx::query_as(
             "SELECT l.id, l.numero_lote, l.unidad,
-                    (l.cantidad_recibida - COALESCE(
+                    CAST((l.cantidad_recibida - COALESCE(
                         (SELECT SUM(pd.cantidad_utilizada) FROM produccion_detalle pd WHERE pd.lote_ingrediente_id = l.id), 0
-                    )) AS saldo
+                    )) AS DOUBLE) AS saldo
              FROM lotes_ingredientes l
              WHERE l.ingrediente_id = ?
              ORDER BY l.fecha_recepcion ASC, l.id ASC",
