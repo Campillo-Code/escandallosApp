@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Download, Banknote } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Download, Banknote, Tag } from "lucide-react";
+import { exportEtiquetaCongeladoPDF } from "../lib/exports";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 
@@ -48,6 +49,14 @@ export default function Configuracion() {
       }
     } catch (e) {
       console.error("Error loading serial ports:", e);
+    }
+  };
+
+  const handleEtiquetaCongelado = async () => {
+    try {
+      await exportEtiquetaCongeladoPDF();
+    } catch (e) {
+      alert("Error al generar la etiqueta: " + e);
     }
   };
 
@@ -356,6 +365,23 @@ export default function Configuracion() {
         <div className="mt-4 text-xs text-gray-400">
           <p>Si tu caja no está en COM3, configura la variable de entorno <code className="bg-gray-100 px-1 rounded">CASH_DRAWER_PORT</code> con el puerto correcto.</p>
         </div>
+      </div>
+
+      {/* Etiquetas */}
+      <div className="mt-8 bg-white rounded-lg shadow p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Tag size={20} className="text-gray-600" />
+          <h3 className="text-lg font-semibold text-gray-800">Etiquetas</h3>
+        </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Aviso para envases de producto congelado — misma medida que las etiquetas de producción (100×62 mm)
+        </p>
+        <button
+          onClick={handleEtiquetaCongelado}
+          className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 text-sm"
+        >
+          <Download size={16} /> Generar etiqueta "PRODUCTO CONGELADO"
+        </button>
       </div>
     </div>
   );

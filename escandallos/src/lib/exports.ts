@@ -1249,3 +1249,54 @@ export async function exportResumenIngredientesExcel(
     await writeFile(path, new Uint8Array(xlsxBytes));
   }
 }
+
+export async function exportEtiquetaCongeladoPDF(labelW: number = 100, labelH: number = 62) {
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [labelW, labelH] });
+  const scale = Math.min(labelW / 100, labelH / 62);
+  const ml = Math.max(3, 4 * scale);
+  const cw = labelW - ml * 2;
+
+  // Marco exterior
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(0.6);
+  doc.rect(1.2, 1.2, labelW - 2.4, labelH - 2.4, "S");
+
+  // Banda superior negra con el título en blanco
+  const headerH = Math.max(10, 16 * scale);
+  doc.setFillColor(0, 0, 0);
+  doc.rect(1.2, 1.2, labelW - 2.4, headerH, "F");
+  doc.setTextColor(255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(Math.max(9, 16 * scale));
+  doc.text("PRODUCTO CONGELADO", labelW / 2, 1.2 + headerH * 0.66, { align: "center" });
+
+  // Aviso de conservación
+  const aviso =
+    "Conservar a -18 °C. Mantener la cadena de frío. Cocinar completamente sin descongelar. No volver a congelar una vez descongelado.";
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(Math.max(6.5, 10.5 * scale));
+  const lineas = doc.splitTextToSize(aviso, cw);
+  const lh = Math.max(3.4, 5.4 * scale);
+  const totalH = lineas.length * lh;
+  // Centrado vertical en el hueco bajo la banda
+  const inicioY = 1.2 + headerH + (labelH - 2.4 - headerH - totalH) / 2 + lh * 0.8;
+  doc.text(lineas, ml, inicioY, { align: "left" });
+
+  const home = await homeDir();
+  const path = await save({
+    defaultPath: `${home}/etiqueta_producto_congelado.pdf`,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+  if (path) {
+    const blob = doc.output("blob");
+    const buffer = await blob.arrayBuffer();
+    await writeFile(path, new Uint8Array(buffer));
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(`file://${path}`);
+    } catch (e) {
+      console.warn("No se pudo abrir el PDF automáticamente:", e);
+    }
+  }
+}
