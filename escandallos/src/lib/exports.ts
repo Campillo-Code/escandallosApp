@@ -792,6 +792,26 @@ export async function exportEtiquetaPDF(data: EtiquetaData, labelW: number = 100
   }
 }
 
+export async function exportEtiquetaCongeladoPDF(labelW: number = 100, labelH: number = 62) {
+  await etiquetaAvisoPDF(
+    "PRODUCTO CONGELADO",
+    "Conservar a -18 °C. Mantener la cadena de frío. Cocinar completamente sin descongelar. No volver a congelar una vez descongelado.",
+    "etiqueta_producto_congelado.pdf",
+    labelW,
+    labelH
+  );
+}
+
+export async function exportEtiquetaAlergenosPDF(labelW: number = 100, labelH: number = 62) {
+  await etiquetaAvisoPDF(
+    "AVISO DE ALÉRGENOS",
+    "Este producto puede contener trazas de frutos secos, gluten y lácteos.",
+    "etiqueta_trazas_alergenos.pdf",
+    labelW,
+    labelH
+  );
+}
+
 export async function printEtiquetaPDF(data: EtiquetaData, labelW: number = 100, labelH: number = 62, orientation: "landscape" | "portrait" = "landscape") {
   const doc = new jsPDF({ orientation, unit: "mm", format: [labelW, labelH] });
 
@@ -1250,7 +1270,7 @@ export async function exportResumenIngredientesExcel(
   }
 }
 
-export async function exportEtiquetaCongeladoPDF(labelW: number = 100, labelH: number = 62) {
+async function etiquetaAvisoPDF(titulo: string, texto: string, fileName: string, labelW: number = 100, labelH: number = 62) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: [labelW, labelH] });
   const scale = Math.min(labelW / 100, labelH / 62);
   const ml = Math.max(3, 4 * scale);
@@ -1268,15 +1288,13 @@ export async function exportEtiquetaCongeladoPDF(labelW: number = 100, labelH: n
   doc.setTextColor(255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(Math.max(9, 16 * scale));
-  doc.text("PRODUCTO CONGELADO", labelW / 2, 1.2 + headerH * 0.66, { align: "center" });
+  doc.text(titulo, labelW / 2, 1.2 + headerH * 0.66, { align: "center" });
 
-  // Aviso de conservación
-  const aviso =
-    "Conservar a -18 °C. Mantener la cadena de frío. Cocinar completamente sin descongelar. No volver a congelar una vez descongelado.";
+  // Texto del aviso
   doc.setTextColor(0);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(Math.max(6.5, 10.5 * scale));
-  const lineas = doc.splitTextToSize(aviso, cw);
+  const lineas = doc.splitTextToSize(texto, cw);
   const lh = Math.max(3.4, 5.4 * scale);
   const totalH = lineas.length * lh;
   // Centrado vertical en el hueco bajo la banda
@@ -1285,7 +1303,7 @@ export async function exportEtiquetaCongeladoPDF(labelW: number = 100, labelH: n
 
   const home = await homeDir();
   const path = await save({
-    defaultPath: `${home}/etiqueta_producto_congelado.pdf`,
+    defaultPath: `${home}/${fileName}`,
     filters: [{ name: "PDF", extensions: ["pdf"] }],
   });
   if (path) {

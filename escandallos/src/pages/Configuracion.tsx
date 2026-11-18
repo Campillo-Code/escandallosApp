@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Plus, Pencil, Trash2, X, Wifi, WifiOff, Database, Download, Banknote, Tag } from "lucide-react";
-import { exportEtiquetaCongeladoPDF } from "../lib/exports";
+import { exportEtiquetaCongeladoPDF, exportEtiquetaAlergenosPDF } from "../lib/exports";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 
@@ -55,6 +55,14 @@ export default function Configuracion() {
   const handleEtiquetaCongelado = async () => {
     try {
       await exportEtiquetaCongeladoPDF();
+    } catch (e) {
+      alert("Error al generar la etiqueta: " + e);
+    }
+  };
+
+  const handleEtiquetaAlergenos = async () => {
+    try {
+      await exportEtiquetaAlergenosPDF();
     } catch (e) {
       alert("Error al generar la etiqueta: " + e);
     }
@@ -376,12 +384,23 @@ export default function Configuracion() {
         <p className="text-sm text-gray-500 mb-4">
           Aviso para envases de producto congelado — misma medida que las etiquetas de producción (100×62 mm)
         </p>
-        <button
-          onClick={handleEtiquetaCongelado}
-          className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 text-sm"
-        >
-          <Download size={16} /> Generar etiqueta "PRODUCTO CONGELADO"
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={handleEtiquetaCongelado}
+            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 flex items-center gap-2 text-sm"
+          >
+            <Download size={16} /> "PRODUCTO CONGELADO"
+          </button>
+          <button
+            onClick={handleEtiquetaAlergenos}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 flex items-center gap-2 text-sm"
+          >
+            <Download size={16} /> "AVISO DE ALÉRGENOS"
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 mt-3">
+          El aviso de alérgenos indica: "Este producto puede contener trazas de frutos secos, gluten y lácteos."
+        </p>
       </div>
     </div>
   );
