@@ -13,6 +13,7 @@ import FichasReceta from "./pages/FichasReceta";
 import Ventas from "./pages/Ventas";
 import MenuEngineering from "./pages/MenuEngineering";
 import Contabilidad from "./pages/Contabilidad";
+import Perdidas from "./pages/Perdidas";
 import Configuracion from "./pages/Configuracion";
 import Lotes from "./pages/Lotes";
 import Produccion from "./pages/Produccion";
@@ -73,6 +74,7 @@ const sections: SidebarSection[] = [
       { to: "/ventas", label: "Ventas", icon: "💰" },
       { to: "/menu-engineering", label: "Menu Engineering", icon: "📈" },
       { to: "/contabilidad", label: "Contabilidad", icon: "📉" },
+      { to: "/perdidas", label: "Pérdidas", icon: "⚠️" },
     ],
   },
   {
@@ -264,6 +266,7 @@ function App() {
           <Route path="/ventas" element={<Ventas />} />
           <Route path="/menu-engineering" element={<MenuEngineering />} />
           <Route path="/contabilidad" element={<Contabilidad />} />
+          <Route path="/perdidas" element={<Perdidas />} />
           <Route path="/configuracion" element={<Configuracion />} />
           <Route path="/lotes" element={<Lotes />} />
           <Route path="/produccion" element={<Produccion />} />

@@ -166,6 +166,7 @@ export default function Recetas() {
   const [showRecalculo, setShowRecalculo] = useState(false);
   const [recalculoPorciones, setRecalculoPorciones] = useState(1);
   const [recalculoPorcionesOriginales, setRecalculoPorcionesOriginales] = useState(1);
+  const [recalcCascada, setRecalcCascada] = useState(true);
   const [recalculoIngredientes, setRecalculoIngredientes] = useState<{
     id: number;
     recetaIngredienteId: number;
@@ -175,6 +176,7 @@ export default function Recetas() {
     unidad: string;
     merma: number;
     precioUnitario: number | null;
+    envase: boolean;
   }[]>([]);
 
   const categorias = [...new Set(recetas.map(r => r.categoria).filter(Boolean) as string[])].sort();
@@ -184,6 +186,7 @@ export default function Recetas() {
     const porcionesOrig = selectedReceta?.porciones ?? 1;
     setRecalculoPorciones(porcionesOrig);
     setRecalculoPorcionesOriginales(porcionesOrig);
+    setRecalcCascada(true);
     const costMap = new Map(costeReceta.ingredientes.map(ci => [ci.ingrediente_nombre, ci]));
     setRecalculoIngredientes(
       recetaIngredientes.map((ri, idx) => {
@@ -198,6 +201,7 @@ export default function Recetas() {
           unidad: ri.unidad,
           merma: ri.merma_porcentaje,
           precioUnitario: costeData?.precio_por_unidad_receta ?? null,
+          envase: ri.tipo_envase != null,
         };
       })
     );
@@ -225,19 +229,47 @@ export default function Recetas() {
   })();
 
   const handleRecalculoCantidadChange = (id: number, nuevaCantidad: number) => {
+    const objetivo = recalculoIngredientes.find(ci => ci.id === id);
+    const editableLibre =
+      !recalcCascada ||
+      !objetivo ||
+      objetivo.envase ||
+      !(objetivo.cantidadOriginal > 0) ||
+      !(nuevaCantidad > 0);
+
+    if (editableLibre) {
+      // Edición libre (envases nunca disparan la cascada)
+      setRecalculoIngredientes(prev =>
+        prev.map(ci => ci.id === id ? { ...ci, cantidad: nuevaCantidad } : ci)
+      );
+      return;
+    }
+
+    // Cascada: el factor sale del ORIGINAL del ingrediente editado,
+    // el resto de ingredientes y las porciones se recalculan con él
+    const factor = nuevaCantidad / objetivo.cantidadOriginal;
     setRecalculoIngredientes(prev =>
-      prev.map(ci => ci.id === id ? { ...ci, cantidad: nuevaCantidad } : ci)
+      prev.map(ci => {
+        if (ci.id === id) return { ...ci, cantidad: nuevaCantidad };
+        if (ci.envase) return ci;
+        return { ...ci, cantidad: Math.round(ci.cantidadOriginal * factor * 1000) / 1000 };
+      })
     );
+    setRecalculoPorciones(Math.max(1, Math.round(recalculoPorcionesOriginales * factor)));
   };
 
   const handleRecalculoPorcionesChange = (nuevasPorciones: number) => {
     if (nuevasPorciones < 1) return;
     const factor = nuevasPorciones / recalculoPorcionesOriginales;
     setRecalculoIngredientes(prev =>
-      prev.map(ci => ({
-        ...ci,
-        cantidad: Math.round(ci.cantidadOriginal * factor * 1000) / 1000,
-      }))
+      prev.map(ci =>
+        ci.envase
+          ? ci // los envases no se recalculan
+          : {
+              ...ci,
+              cantidad: Math.round(ci.cantidadOriginal * factor * 1000) / 1000,
+            }
+      )
     );
     setRecalculoPorciones(nuevasPorciones);
   };
@@ -1507,6 +1539,18 @@ export default function Recetas() {
                       </span>
                     )}
                   </div>
+                  <label className="flex items-center gap-2 mt-3 text-sm text-gray-700 cursor-pointer select-none w-fit">
+                    <input
+                      type="checkbox"
+                      checked={recalcCascada}
+                      onChange={(e) => setRecalcCascada(e.target.checked)}
+                      className="rounded"
+                    />
+                    Al cambiar un ingrediente, recalcular el resto de ingredientes y las porciones
+                  </label>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Los envases nunca se recalculan. Ej.: 1 L de leche y 4 huevos para 15 raciones → pon 2 L y huevos pasa a 8, raciones a 30.
+                  </p>
                 </div>
                 <div className="bg-white rounded-lg border overflow-hidden">
                   <table className="w-full">
