@@ -3635,34 +3635,13 @@ async fn create_caja_ticket(input: CajaTicketInput) -> Result<i64, String> {
 #[tauri::command]
 async fn delete_caja_ticket(id: i64) -> Result<(), String> {
     let pool = &db::get_pool();
-    // Delete all linked ventas first
+    // Se borran SOLO las ventas de este ticket. (Antes había un bucle que
+    // borraba también ventas de otros tickets con fecha/plato/precio igual y
+    // dejaba los tickets vivos con las líneas incompletas.)
     sqlx::query("DELETE FROM ventas WHERE ticket_id = ?")
         .bind(id).execute(pool).await.map_err(|e| e.to_string())?;
-    // Also delete any orphaned ventas from old tickets (no ticket_id) by matching
-    let sql = "SELECT id, DATE_FORMAT(fecha, '%Y-%m-%d') AS fecha, CAST(hora AS CHAR) AS hora, CAST(total AS DOUBLE) AS total, CAST(items AS CHAR) AS items, notas, metodo_pago, tipo FROM caja_tickets WHERE id = ?";
-    let ticket: Option<CajaTicket> = sqlx::query(sql).bind(id).fetch_optional(pool).await.map_err(|e| e.to_string())?.map(|r| {
-        CajaTicket {
-            id: r.try_get("id").unwrap_or_default(),
-            fecha: r.try_get("fecha").unwrap_or_default(),
-            hora: r.try_get("hora").unwrap_or_default(),
-            total: r.try_get::<f64, _>("total").unwrap_or(0.0),
-            items: r.try_get("items").unwrap_or_default(),
-            notas: r.try_get("notas").ok().flatten(),
-            metodo_pago: r.try_get("metodo_pago").ok().flatten(),
-            tipo: r.try_get("tipo").ok().flatten(),
-        }
-    });
-    if let Some(t) = ticket {
-        let items: Vec<CajaTicketItem> = serde_json::from_str(&t.items).unwrap_or_default();
-        for item in &items {
-            let plato = format!("{} - {}", item.categoria, item.descripcion);
-            sqlx::query("DELETE FROM ventas WHERE fecha = ? AND plato_nombre = ? AND cantidad = ? AND precio_unitario = ? AND (ticket_id IS NULL OR ticket_id != ?) LIMIT 1")
-                .bind(&t.fecha).bind(&plato).bind(item.cantidad).bind(item.precio_unitario).bind(id)
-                .execute(pool).await.ok();
-        }
-    }
-    sqlx::query("DELETE FROM caja_tickets WHERE id = ?").bind(id)
-        .execute(pool).await.map_err(|e| e.to_string())?;
+    sqlx::query("DELETE FROM caja_tickets WHERE id = ?")
+        .bind(id).execute(pool).await.map_err(|e| e.to_string())?;
     Ok(())
 }
 

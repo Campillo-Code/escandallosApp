@@ -6,6 +6,7 @@ import { writeFile } from "@tauri-apps/plugin-fs";
 import { homeDir } from "@tauri-apps/api/path";
 import SearchBar from "../components/SearchBar";
 import DateInput from "../components/DateInput";
+import * as XLSX from "xlsx";
 
 interface Venta { id: number; fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; metodo_pago: string | null; }
 interface VentaCSVRow { fecha: string; plato_nombre: string; cantidad: number; precio_unitario: number; total_venta: number; }
@@ -38,10 +39,15 @@ function getLocalDateStr(d: Date): string {
 }
 
 export default function Ventas() {
+  const primerDiaMes = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+  };
   const [ventas, setVentas] = useState<Venta[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
+  const [fechaDesde, setFechaDesde] = useState(primerDiaMes);
+  const [fechaHasta, setFechaHasta] = useState(() => getLocalDateStr(new Date()));
+  const [filtroPago, setFiltroPago] = useState<"todos" | "efectivo" | "tarjeta">("todos");
   const [tab, setTab] = useState<"historial" | "tickets" | "importar">("historial");
 
   // Tickets state
@@ -133,9 +139,9 @@ export default function Ventas() {
     } catch (e) { alert("Error: " + e); }
   };
 
-  const exportCSV = async () => {
+  const exportXLS = async () => {
     const rows = tab === "tickets"
-      ? tickets.map(t => {
+      ? ticketsFiltrados.map(t => {
           const items: TicketItem[] = JSON.parse(t.items);
           let cuotaIva = 0;
           const ivas = new Set<number>();
@@ -155,14 +161,14 @@ export default function Ventas() {
             Tipo: t.tipo || "pedido",
             Productos: partes.join(" | "),
             Cantidad: items.reduce((s, i) => s + (i.cantidad || 1), 0),
-            "Base Imponible": baseImponible.toFixed(2),
+            "Base Imponible": Math.round(baseImponible * 100) / 100,
             "IVA %": ivas.size === 1 ? [...ivas][0] : "mixto",
-            "IVA €": cuotaIva.toFixed(2),
-            Total: total.toFixed(2),
+            "IVA €": Math.round(cuotaIva * 100) / 100,
+            Total: total,
             "Método Pago": t.metodo_pago || "efectivo",
           };
         })
-      : ventas.map(v => {
+      : ventasFiltradas.map(v => {
           const iva = 10;
           const baseImponible = v.total_venta / (1 + iva / 100);
           const cuotaIva = v.total_venta - baseImponible;
@@ -170,31 +176,41 @@ export default function Ventas() {
             Fecha: v.fecha,
             Plato: v.plato_nombre,
             Cantidad: v.cantidad,
-            "Precio Unitario": v.precio_unitario.toFixed(2),
-            "Base Imponible": baseImponible.toFixed(2),
+            "Precio Unitario": v.precio_unitario,
+            "Base Imponible": Math.round(baseImponible * 100) / 100,
             "IVA %": iva,
-            "IVA €": cuotaIva.toFixed(2),
-            Total: v.total_venta.toFixed(2),
+            "IVA €": Math.round(cuotaIva * 100) / 100,
+            Total: v.total_venta,
             "Método Pago": v.metodo_pago || "efectivo",
           };
         });
     if (rows.length === 0) { alert("No hay datos para exportar"); return; }
-    const headers = Object.keys(rows[0]);
-    const csv = [headers.join(";"), ...rows.map(r => headers.map(h => String((r as Record<string, unknown>)[h])).join(";"))].join("\n");
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, tab === "tickets" ? "Tickets" : "Ventas");
+    const bytes = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const home = await homeDir();
     const path = await save({
-      defaultPath: `${home}/ventas_${getLocalDateStr(new Date())}.csv`,
-      filters: [{ name: "CSV", extensions: ["csv"] }],
+      defaultPath: `${home}/ventas_${getLocalDateStr(new Date())}.xlsx`,
+      filters: [{ name: "Excel", extensions: ["xlsx"] }],
     });
     if (path) {
-      const encoder = new TextEncoder();
-      await writeFile(path, encoder.encode("\uFEFF" + csv));
+      await writeFile(path, new Uint8Array(bytes));
     }
   };
 
-  const totalVentas = ventas.reduce((s, v) => s + v.total_venta, 0);
-  const totalUnidades = ventas.reduce((s, v) => s + v.cantidad, 0);
-  const totalTickets = tickets.reduce((s, t) => s + t.total, 0);
+  // Filtrado por método de pago (sin dato = efectivo, como en la terminal)
+  const coincidePago = (mp: string | null) => {
+    if (filtroPago === "todos") return true;
+    if (filtroPago === "tarjeta") return mp === "tarjeta";
+    return !mp || mp === "efectivo";
+  };
+  const ventasFiltradas = ventas.filter(v => coincidePago(v.metodo_pago));
+  const ticketsFiltrados = tickets.filter(t => coincidePago(t.metodo_pago));
+
+  const totalVentas = ventasFiltradas.reduce((s, v) => s + v.total_venta, 0);
+  const totalUnidades = ventasFiltradas.reduce((s, v) => s + v.cantidad, 0);
+  const totalTickets = ticketsFiltrados.reduce((s, t) => s + t.total, 0);
 
   return (
     <div className="p-6">
@@ -212,24 +228,33 @@ export default function Ventas() {
         <div className="flex items-center gap-4 mb-4">
           <DateInput value={fechaDesde} onChange={setFechaDesde} label="Desde" />
           <DateInput value={fechaHasta} onChange={setFechaHasta} label="Hasta" />
-          {(fechaDesde || fechaHasta) && (
-            <button onClick={() => { setFechaDesde(""); setFechaHasta(""); }} className="text-sm text-blue-600 hover:underline mt-4">Limpiar filtros</button>
-          )}
+          <div className="flex flex-col">
+            <span className="text-xs text-gray-500 mb-1">Pago</span>
+            <div className="flex gap-1">
+              {[{ k: "todos", l: "Todos" }, { k: "efectivo", l: "Efectivo" }, { k: "tarjeta", l: "Tarjeta" }].map(f => (
+                <button key={f.k} onClick={() => setFiltroPago(f.k as typeof filtroPago)}
+                  className={`px-2.5 py-1.5 rounded text-xs font-medium ${filtroPago === f.k ? "bg-blue-600 text-white" : "bg-white text-gray-700 border"}`}>
+                  {f.l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <button onClick={() => { setFechaDesde(primerDiaMes()); setFechaHasta(getLocalDateStr(new Date())); }} className="text-sm text-blue-600 hover:underline mt-4">Mes actual</button>
           <div className="ml-auto flex items-center gap-3">
             {tab === "historial" && (
               <div className="text-right">
                 <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-800">{totalVentas.toFixed(2)}€</span></p>
-                <p className="text-xs text-gray-400">{totalUnidades} unidades · {ventas.length} registros</p>
+                <p className="text-xs text-gray-400">{totalUnidades} unidades · {ventasFiltradas.length} registros</p>
               </div>
             )}
             {tab === "tickets" && (
               <div className="text-right">
                 <p className="text-sm text-gray-500">Total: <span className="font-bold text-gray-800">{totalTickets.toFixed(2)}€</span></p>
-                <p className="text-xs text-gray-400">{tickets.length} tickets</p>
+                <p className="text-xs text-gray-400">{ticketsFiltrados.length} tickets</p>
               </div>
             )}
-            <button onClick={exportCSV} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
-              <Download size={14} /> Exportar CSV
+            <button onClick={exportXLS} className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium">
+              <Download size={14} /> Exportar Excel
             </button>
           </div>
         </div>
@@ -243,7 +268,7 @@ export default function Ventas() {
           </div>
           <div className="bg-white rounded-lg shadow overflow-hidden">
             {loading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
-              ventas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay ventas registradas</div> : (
+              ventasFiltradas.length === 0 ? <div className="p-6 text-center text-gray-500">No hay ventas con estos filtros</div> : (
                 <table className="w-full">
                   <thead className="bg-gray-50 border-b border-gray-200">
                     <tr>
@@ -257,7 +282,7 @@ export default function Ventas() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {ventas.filter(v => !searchTerm || v.plato_nombre.toLowerCase().includes(searchTerm.toLowerCase())).map(v => (
+                    {ventasFiltradas.filter(v => !searchTerm || v.plato_nombre.toLowerCase().includes(searchTerm.toLowerCase())).map(v => (
                       <tr key={v.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 text-sm text-gray-600">{v.fecha}</td>
                         <td className="px-4 py-3 text-sm font-medium text-gray-800">{v.plato_nombre}</td>
@@ -291,9 +316,9 @@ export default function Ventas() {
         <div className="bg-white rounded-lg shadow">
           {ticketsLoading ? <div className="p-6 text-center text-gray-500">Cargando...</div> :
             ticketsError ? <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm m-4">{ticketsError}</div> :
-            tickets.length === 0 ? <div className="p-6 text-center text-gray-500">No hay tickets en este periodo</div> : (
+            ticketsFiltrados.length === 0 ? <div className="p-6 text-center text-gray-500">No hay tickets con estos filtros</div> : (
               <div className="divide-y divide-gray-200">
-                {tickets.map(ticket => {
+                {ticketsFiltrados.map(ticket => {
                   const items: TicketItem[] = JSON.parse(ticket.items);
                   const isExpanded = expandedTicket === ticket.id;
                   return (
